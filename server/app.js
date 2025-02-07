@@ -12,7 +12,7 @@ const PORT = 5000;
 // Middleware
 app.use(express.json());
 app.use(cors(
-    {origin:["https://comments-dashboard-client.vercel.app"],
+    {origin:["https://comments-dashboard-server.vercel.app"],
      methods:["POST","GET"],
      credentials:true
     }
