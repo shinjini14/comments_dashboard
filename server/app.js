@@ -16,6 +16,12 @@ app.use(cors());
 // Serve the React build
 app.use(express.static(path.join(__dirname, "../client/build")));
 
+
+app.use("/",(req,res)=>
+    {res.send("Server is running")
+
+    }) 
+
 // Login API
 app.post("/api/auth/login", async (req, res) => {
   const { username, password } = req.body;
@@ -75,9 +81,12 @@ app.get("/api/videos", async (req, res) => {
   });
 
 
+
   app.get("*", (req, res) => {
     res.sendFile(path.join(__dirname, "../client/build", "index.html"));
   });
+
+
   
   app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   
