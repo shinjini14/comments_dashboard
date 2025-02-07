@@ -181,7 +181,7 @@ const Dashboard = () => {
       >
         <Box
           sx={{
-            height: "100vh",
+            height: "83vh",
             width: "100%",
             backgroundColor: "#fff",
             borderRadius: 2,
