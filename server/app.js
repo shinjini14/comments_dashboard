@@ -11,13 +11,15 @@ const PORT = 5000;
 
 // Middleware
 app.use(express.json());
-app.use(cors(
-    {origin:["https://comments-dashboard-client.vercel.app"],
-     methods:["POST","GET"],
-     credentials:true
-    }
-));
-
+// Add this before your routes
+const allowedOrigins = ["https://comments-dashboard-client.vercel.app"];
+app.use(
+  cors({
+    origin: allowedOrigins,
+    methods: "GET,POST,PUT,DELETE",
+    credentials: true, // Allow cookies if necessary
+  })
+);
 // Serve the React build
 //app.use(express.static(path.join(__dirname, "../client/build")));
 
