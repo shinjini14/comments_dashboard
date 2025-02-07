@@ -16,12 +16,10 @@ const Login = () => {
     setError(null); // Reset error message
 
     try {
-      const { data } = await axios.post(
-        "https://comments-dashboard-server.vercel.app/api/auth/login",
-        { username, password },
-        { withCredentials: true } // Ensures cookies are sent if required
-      );
-      
+      const { data } = await axios.post("/api/auth/login", {
+        username,
+        password,
+      });
       if (data.success) {
         localStorage.setItem("token", data.token);
         setIsAuthenticated(true);
