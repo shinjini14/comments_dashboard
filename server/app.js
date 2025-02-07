@@ -29,36 +29,30 @@ app.post("/api/auth/login", async (req, res) => {
     const { username, password } = req.body;
   
     try {
-      // Ensure the query is correct and matches your database schema
       const result = await pool.query(
         "SELECT * FROM comments_login WHERE username = $1 AND password = $2",
         [username, password]
       );
   
-      if (result.rows.length === 0) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Invalid username or password" });
-      }
-  
       const user = result.rows[0];
+      if (user) {
+        const token = jwt.sign(
+          { id: user.id, username: user.username, role: user.role },
+          process.env.JWT_SECRET,
+          { expiresIn: "1h" }
+        );
   
-      // Ensure JWT_SECRET is properly set in your environment variables
-      const token = jwt.sign(
-        { id: user.id, username: user.username, role: user.role },
-        process.env.JWT_SECRET,
-        { expiresIn: "1h" }
-      );
-  
-      res.json({
-        success: true,
-        token,
-        role: user.role,
-        username: user.username,
-      });
+        res.json({
+          success: true,
+          token,
+          role: user.role,
+          username: user.username,
+        });
+      } else {
+        res.status(401).json({ success: false, message: "Invalid credentials" });
+      }
     } catch (error) {
-      console.error("Error in /api/auth/login:", error.message);
-  
+      console.error("Error in /api/auth/login:", error); // Log full error
       res.status(500).json({ error: "Internal Server Error" });
     }
   });
