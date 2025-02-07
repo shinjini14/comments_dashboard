@@ -15,14 +15,15 @@ app.use(cors());
 
 // Middleware
 app.use(express.json());
-app.use(
-  cors({
-    origin: ["https://comments-dashboard-client.vercel.app"], // Your client URL
-    credentials: true,
-    methods: "GET,POST,PUT,DELETE",
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+
+
+const corsOptions = {
+  origin: "https://comments-dashboard-client.vercel.app", // Allow only your frontend URL
+  credentials: true, // Allow cookies or authentication headers
+};
+
+app.use(cors(corsOptions));
+
 
 // Serve the React build
 //app.use(express.static(path.join(__dirname, "../client/build")));
