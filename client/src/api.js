@@ -2,7 +2,7 @@ import axios from "axios";
 
 // ✅ Set the base URL to the deployed backend
 const API = axios.create({
-  baseURL: "https://comments-dashboard-server.vercel.app", // Update this!
+  baseURL: "https://comments-dashboard-server.vercel.app/api", // Update this!
 });
 
 // API Functions
