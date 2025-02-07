@@ -17,10 +17,7 @@ app.use(cors());
 app.use(express.static(path.join(__dirname, "../client/build")));
 
 
-app.use("/",(req,res)=>
-    {res.send("Server is running")
 
-    }) 
 
 // Login API
 app.post("/api/auth/login", async (req, res) => {
