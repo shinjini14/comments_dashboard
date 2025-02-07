@@ -34,8 +34,8 @@ const Dashboard = () => {
     const fetchData = async () => {
       try {
         const [commentsRes, videosRes] = await Promise.all([
-          axios.get("/api/comments"),
-          axios.get("/api/videos"),
+          axios.get("https://comments-dashboard-server.vercel.app/api/comments"),
+          axios.get("https://comments-dashboard-server.vercel.app/api/videos"),
         ]);
 
         setComments(commentsRes.data);
