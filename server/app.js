@@ -11,7 +11,12 @@ const PORT = 5000;
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(cors(
+    {origin:["https://comments-dashboard-client.vercel.app"],
+     methods:["POST","GET"],
+     credentials:true
+    }
+));
 
 // Serve the React build
 //app.use(express.static(path.join(__dirname, "../client/build")));
