@@ -21,36 +21,43 @@ app.use(cors());
 
 // Login API
 app.post("/api/auth/login", async (req, res) => {
-  const { username, password } = req.body;
-
-  try {
-    const result = await pool.query(
-      "SELECT * FROM comments_login WHERE username = $1 AND password = $2",
-      [username, password]
-    );
-    const user = result.rows[0];
-
-    if (user) {
+    const { username, password } = req.body;
+  
+    try {
+      // Ensure the query is correct and matches your database schema
+      const result = await pool.query(
+        "SELECT * FROM comments_login WHERE username = $1 AND password = $2",
+        [username, password]
+      );
+  
+      if (result.rows.length === 0) {
+        return res
+          .status(401)
+          .json({ success: false, message: "Invalid username or password" });
+      }
+  
+      const user = result.rows[0];
+  
+      // Ensure JWT_SECRET is properly set in your environment variables
       const token = jwt.sign(
         { id: user.id, username: user.username, role: user.role },
         process.env.JWT_SECRET,
         { expiresIn: "1h" }
       );
-
+  
       res.json({
         success: true,
         token,
         role: user.role,
         username: user.username,
       });
-    } else {
-      res.status(401).json({ success: false, message: "Invalid credentials" });
+    } catch (error) {
+      console.error("Error in /api/auth/login:", error.message);
+  
+      res.status(500).json({ error: "Internal Server Error" });
     }
-  } catch (error) {
-    console.error("Error logging in:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
+  });
+  
 
 // Fetch Comments Data for Table
 app.get("/api/comments", async (req, res) => {
