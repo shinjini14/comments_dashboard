@@ -14,7 +14,7 @@ app.use(express.json());
 app.use(cors());
 
 // Serve the React build
-app.use(express.static(path.join(__dirname, "../client/build")));
+//app.use(express.static(path.join(__dirname, "../client/build")));
 
 
 
@@ -79,9 +79,9 @@ app.get("/api/videos", async (req, res) => {
 
 
 
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "../client/build", "index.html"));
-  });
+  //app.get("*", (req, res) => {
+    //res.sendFile(path.join(__dirname, "../client/build", "index.html"));
+  //});
 
 
   
