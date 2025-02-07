@@ -11,15 +11,8 @@ const PORT = 5000;
 
 // Middleware
 app.use(express.json());
-// Add this before your routes
-const allowedOrigins = ["https://comments-dashboard-client.vercel.app"];
-app.use(
-  cors({
-    origin: allowedOrigins,
-    methods: "GET,POST,PUT,DELETE",
-    credentials: true, // Allow cookies if necessary
-  })
-);
+app.use(cors());
+
 // Serve the React build
 //app.use(express.static(path.join(__dirname, "../client/build")));
 
@@ -28,37 +21,37 @@ app.use(
 
 // Login API
 app.post("/api/auth/login", async (req, res) => {
-    const { username, password } = req.body;
-  
-    try {
-      const result = await pool.query(
-        "SELECT * FROM comments_login WHERE username = $1 AND password = $2",
-        [username, password]
+  const { username, password } = req.body;
+
+  try {
+    const result = await pool.query(
+      "SELECT * FROM comments_login WHERE username = $1 AND password = $2",
+      [username, password]
+    );
+
+    const user = result.rows[0];
+    if (user) {
+      const token = jwt.sign(
+        { id: user.id, username: user.username, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: "1h" }
       );
-  
-      const user = result.rows[0];
-      if (user) {
-        const token = jwt.sign(
-          { id: user.id, username: user.username, role: user.role },
-          process.env.JWT_SECRET,
-          { expiresIn: "1h" }
-        );
-  
-        res.json({
-          success: true,
-          token,
-          role: user.role,
-          username: user.username,
-        });
-      } else {
-        res.status(401).json({ success: false, message: "Invalid credentials" });
-      }
-    } catch (error) {
-      console.error("Error in /api/auth/login:", error); // Log full error
-      res.status(500).json({ error: "Internal Server Error" });
+
+      res.json({
+        success: true,
+        token,
+        role: user.role,
+        username: user.username,
+      });
+    } else {
+      res.status(401).json({ success: false, message: "Invalid credentials" });
     }
-  });
-  
+  } catch (error) {
+    console.error("Error in /api/auth/login:", error); // Log full error
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 
 // Fetch Comments Data for Table
 app.get("/api/comments", async (req, res) => {
