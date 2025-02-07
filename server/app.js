@@ -10,8 +10,11 @@ const app = express();
 const PORT = 5000;
 
 // Middleware
-app.use(bodyParser.json());
+app.use(express.json());
 app.use(cors());
+
+// Serve the React build
+app.use(express.static(path.join(__dirname, "../client/build")));
 
 // Login API
 app.post("/api/auth/login", async (req, res) => {
@@ -72,7 +75,9 @@ app.get("/api/videos", async (req, res) => {
   });
 
 
-// Start the Server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "../client/build/index.html"));
+  });
+  
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  
