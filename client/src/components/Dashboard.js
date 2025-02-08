@@ -19,6 +19,7 @@ import { ThumbUp, ThumbDown, Delete, Search } from "@mui/icons-material";
 import InstagramIcon from "@mui/icons-material/Instagram";
 import FacebookIcon from "@mui/icons-material/Facebook";
 import TwitterIcon from "@mui/icons-material/Twitter";
+import { format } from "date-fns";
 import dayjs from "dayjs";
 import { IconButton } from "@mui/material";
 
@@ -83,6 +84,9 @@ const Dashboard = () => {
     const url = videoMapping[comment.video_id];
     return url && url.toLowerCase().includes(searchQuery.toLowerCase());
   });
+
+
+
   const openModal = async (comment) => {
     if (!comment || !comment.video_id) {
       console.error("Invalid comment data:", comment);
@@ -145,13 +149,19 @@ const Dashboard = () => {
         );
       },
     },
-    {
-      field: "updated_at",
-      headerName: "Time",
-      flex: 1,
-      valueFormatter: (params) =>
-        dayjs(params.value).format("MMM DD, YYYY HH:mm"),
-    },
+   
+
+{
+  field: "updated_at",
+  headerName: "Time",
+  width: 150,
+  renderCell: (params) =>
+    params.value
+      ? format(new Date(params.value), "dd/MM/yyyy, HH:mm")
+      : "N/A",
+},
+
+    
     {
       field: "actions",
       headerName: "Actions",
