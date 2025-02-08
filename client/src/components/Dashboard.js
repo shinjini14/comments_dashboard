@@ -35,9 +35,9 @@ const Dashboard = () => {
       try {
         const [commentsRes, videosRes] = await Promise.all([
           axios.get(
-            `https://comments-dashboard-server.vercel.app/api/comments`
+            `${process.env.REACT_APP_API_URL}/api/comments`
           ),
-          axios.get(`https://comments-dashboard-server.vercel.app/api/videos`),
+          axios.get(`${process.env.REACT_APP_API_URL}/api/videos`),
         ]);
         setComments(commentsRes.data);
 
@@ -59,7 +59,7 @@ const Dashboard = () => {
   const handleDelete = async (id) => {
     try {
       await axios.delete(
-        `https://comments-dashboard-server.vercel.app/api/comments/${id}`
+        `${process.env.REACT_APP_API_URL}/api/comments/${id}`
       );
       setComments((prev) => prev.filter((comment) => comment.id !== id));
     } catch (error) {
@@ -91,7 +91,7 @@ const Dashboard = () => {
   const openModal = async (comment) => {
     try {
       const response = await axios.get(
-        `https://comments-dashboard-server.vercel.app/api/comments/${comment.video_id}/details`
+        `${process.env.REACT_APP_API_URL}/api/comments/${comment.video_id}/details`
       );
       setModalData(response.data);
       setIsModalOpen(true);
