@@ -8,7 +8,6 @@ import {
   Box,
   TextField,
   InputAdornment,
-  IconButton,
   CircularProgress,
   Dialog,
   DialogTitle,
@@ -21,32 +20,25 @@ import InstagramIcon from "@mui/icons-material/Instagram";
 import FacebookIcon from "@mui/icons-material/Facebook";
 import TwitterIcon from "@mui/icons-material/Twitter";
 import dayjs from "dayjs";
+import { IconButton } from "@mui/material";
 
 const Dashboard = () => {
   const [comments, setComments] = useState([]);
   const [videoMapping, setVideoMapping] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalData, setModalData] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      window.location.href = "/";
-      return;
-    }
-
     const fetchData = async () => {
       try {
         const [commentsRes, videosRes] = await Promise.all([
           axios.get(
-            "https://comments-dashboard-server.vercel.app/api/comments"
+            `https://comments-dashboard-server.vercel.app/api/comments`
           ),
-          axios.get("https://comments-dashboard-server.vercel.app/api/videos"),
+          axios.get(`https://comments-dashboard-server.vercel.app/api/videos`),
         ]);
-
         setComments(commentsRes.data);
 
         const mapping = {};
@@ -66,7 +58,9 @@ const Dashboard = () => {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`/api/comments/${id}`);
+      await axios.delete(
+        `https://comments-dashboard-server.vercel.app/api/comments/${id}`
+      );
       setComments((prev) => prev.filter((comment) => comment.id !== id));
     } catch (error) {
       console.error("Error deleting comment:", error);
@@ -97,20 +91,17 @@ const Dashboard = () => {
   const openModal = async (comment) => {
     try {
       const response = await axios.get(
-        `https://comments-dashboard-server.vercel.app/api/comments/${comment.video_id}/details`
+        `${process.env.REACT_APP_API_URL}/api/comments/${comment.video_id}/details`
       );
       setModalData(response.data);
-      setSelectedComment(comment);
       setIsModalOpen(true);
     } catch (error) {
       console.error("Error fetching comment details:", error);
     }
   };
 
-
-const closeModal = () => {
+  const closeModal = () => {
     setIsModalOpen(false);
-    setSelectedComment(null);
     setModalData(null);
   };
 
@@ -235,19 +226,19 @@ const closeModal = () => {
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <Search />
+                <Search sx={{ color: "gray" }} />
               </InputAdornment>
             ),
             style: {
-              height: "40px", // Reduced height
+              height: "36px", // Reduced height
               fontSize: "14px", // Adjusted font size
             },
           }}
           sx={{
             width: "300px", // Adjusted width for compactness
-            height: "40px", // Reduced height
+            height: "36px", // Reduced height
             backgroundColor: "#fff", // Updated background color
-           
+            borderRadius: "10px", // Rounded edges for a sleek look
             boxShadow: "0px 1px 3px rgba(0, 0, 0, 0.2)", // Subtle shadow
             "& .MuiOutlinedInput-notchedOutline": {
               borderColor: "#ccc", // Light border color
@@ -264,19 +255,16 @@ const closeModal = () => {
           getRowId={(row) => row.id}
           sx={{
             "& .MuiDataGrid-columnHeaders": {
-              //backgroundColor: "#e0e0e0",
-              
-              fontWeight:"bold",
+              backgroundColor: "#e0e0e0",
+              fontWeight: "bold",
               color: "#303f9f",
-              fontSize:"15px"
             },
             "& .MuiDataGrid-row": {
               "&:nth-of-type(odd)": {
-               // backgroundColor: "#f9f9f9",
-                border:"none"
+                backgroundColor: "#f9f9f9",
               },
             },
-            border: "none"
+            border: "none",
           }}
         />
       </Box>
