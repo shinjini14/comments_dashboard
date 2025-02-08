@@ -20,7 +20,7 @@ import InstagramIcon from "@mui/icons-material/Instagram";
 import FacebookIcon from "@mui/icons-material/Facebook";
 import TwitterIcon from "@mui/icons-material/Twitter";
 import { format } from "date-fns";
-import dayjs from "dayjs";
+
 import { IconButton } from "@mui/material";
 
 const Dashboard = () => {
