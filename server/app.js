@@ -80,8 +80,7 @@ app.get("/api/videos", async (req, res) => {
     }
   });
 
-  // Fetch comment details by video_id
-app.get("/api/comments/:video_id/details", async (req, res) => {
+  app.get("/api/comments/:video_id/details", async (req, res) => {
     const { video_id } = req.params;
   
     try {
@@ -93,7 +92,7 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
           reply_user, 
           reply 
         FROM comments_api 
-        WHERE video_id = ?`,
+        WHERE video_id = $1`, // Use $1 for parameterized queries in pg
         [video_id]
       );
   
@@ -101,7 +100,7 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
       const [video] = await pool.query(
         `SELECT video_preview 
         FROM statistics 
-        WHERE video_id = ?`,
+        WHERE video_id = $1`, // Use $1 for parameterized queries in pg
         [video_id]
       );
   
@@ -128,6 +127,7 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
       res.status(500).json({ error: "Internal server error" });
     }
   });
+  
 
 
 
