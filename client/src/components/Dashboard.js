@@ -107,7 +107,8 @@ const Dashboard = () => {
     }
   };
 
-  const closeModal = () => {
+
+const closeModal = () => {
     setIsModalOpen(false);
     setSelectedComment(null);
     setModalData(null);
