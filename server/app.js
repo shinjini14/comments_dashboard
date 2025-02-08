@@ -80,6 +80,55 @@ app.get("/api/videos", async (req, res) => {
     }
   });
 
+  // Fetch comment details by video_id
+app.get("/api/comments/:video_id/details", async (req, res) => {
+    const { video_id } = req.params;
+  
+    try {
+      // Fetch main comment and replies
+      const [comments] = await pool.query(
+        `SELECT 
+          main_comment, 
+          main_comment_user, 
+          reply_user, 
+          reply 
+        FROM comments_api 
+        WHERE video_id = ?`,
+        [video_id]
+      );
+  
+      // Fetch video preview from statistics table
+      const [video] = await pool.query(
+        `SELECT video_preview 
+        FROM statistics 
+        WHERE video_id = ?`,
+        [video_id]
+      );
+  
+      if (comments.length === 0) {
+        return res.status(404).json({ error: "No comments found for the video_id" });
+      }
+  
+      const mainComment = comments[0];
+      const replies = comments
+        .filter((comment) => comment.reply_user && comment.reply)
+        .map((comment) => ({
+          reply_user: comment.reply_user,
+          reply: comment.reply,
+        }));
+  
+      res.json({
+        main_comment: mainComment.main_comment,
+        main_comment_user: mainComment.main_comment_user,
+        video_preview: video.length > 0 ? video[0].video_preview : null,
+        replies,
+      });
+    } catch (error) {
+      console.error("Error fetching comment details:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
 
 
   //app.get("*", (req, res) => {
