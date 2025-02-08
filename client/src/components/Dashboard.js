@@ -34,9 +34,7 @@ const Dashboard = () => {
     const fetchData = async () => {
       try {
         const [commentsRes, videosRes] = await Promise.all([
-          axios.get(
-            `${process.env.REACT_APP_API_URL}/api/comments`
-          ),
+          axios.get(`${process.env.REACT_APP_API_URL}/api/comments`),
           axios.get(`${process.env.REACT_APP_API_URL}/api/videos`),
         ]);
         setComments(commentsRes.data);
@@ -58,9 +56,7 @@ const Dashboard = () => {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(
-        `${process.env.REACT_APP_API_URL}/api/comments/${id}`
-      );
+      await axios.delete(`${process.env.REACT_APP_API_URL}/api/comments/${id}`);
       setComments((prev) => prev.filter((comment) => comment.id !== id));
     } catch (error) {
       console.error("Error deleting comment:", error);
@@ -87,13 +83,16 @@ const Dashboard = () => {
     const url = videoMapping[comment.video_id];
     return url && url.toLowerCase().includes(searchQuery.toLowerCase());
   });
-
   const openModal = async (comment) => {
+    if (!comment || !comment.video_id) {
+      console.error("Invalid comment data:", comment);
+      return;
+    }
     try {
       const response = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/comments/${comment.video_id}/details`
       );
-      setModalData(response.data);
+      setModalData({ ...response.data, video_id: comment.video_id });
       setIsModalOpen(true);
     } catch (error) {
       console.error("Error fetching comment details:", error);
@@ -145,7 +144,6 @@ const Dashboard = () => {
           "N/A"
         );
       },
-      
     },
     {
       field: "updated_at",
@@ -212,7 +210,7 @@ const Dashboard = () => {
       <Box
         sx={{
           marginTop: "80px",
-          marginBottom: "15px",
+          marginBottom: "28px",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -275,39 +273,93 @@ const Dashboard = () => {
 
       {modalData && (
         <Dialog open={isModalOpen} onClose={closeModal} maxWidth="md" fullWidth>
-          <DialogTitle>Comment Thread</DialogTitle>
+          <DialogTitle
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Typography variant="h6">Comment Thread</Typography>
+            <Button onClick={closeModal} color="primary">
+              Close
+            </Button>
+          </DialogTitle>
           <DialogContent>
+            {/* Main Comment with User */}
             <Typography variant="h6" gutterBottom>
+              <strong>{modalData.main_comment_user}</strong>:{" "}
               {modalData.main_comment}
             </Typography>
+
+            {/* Video Preview */}
             <Box
               sx={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
                 width: "100%",
                 aspectRatio: "16/9",
                 backgroundColor: "#000",
                 marginBottom: 2,
               }}
             >
-              <Typography
-                sx={{ color: "#fff", textAlign: "center", lineHeight: "300px" }}
-              >
-                Video Preview
-              </Typography>
+              {modalData.preview ? (
+                <img
+                  src={modalData.preview}
+                  alt="Video Preview"
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    objectFit: "contain",
+                  }}
+                />
+              ) : (
+                <Typography sx={{ color: "#fff" }}>
+                  Video Preview Not Available
+                </Typography>
+              )}
             </Box>
+
+            {/* Video URL */}
+            <Typography variant="subtitle1" gutterBottom>
+              URL:{" "}
+              {videoMapping[modalData.video_id] ? (
+                <a
+                  href={videoMapping[modalData.video_id]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    color: "#303f9f",
+                    textDecoration: "none",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {videoMapping[modalData.video_id]}
+                </a>
+              ) : (
+                "URL Not Available"
+              )}
+            </Typography>
+
+            {/* Replies */}
             <Typography variant="subtitle1" gutterBottom>
               Replies:
             </Typography>
-            {modalData.replies.map((reply, index) => (
-              <Typography key={index} variant="body2">
-                {reply.reply_user}: {reply.reply}
-              </Typography>
-            ))}
+            <Box sx={{ paddingLeft: 2 }}>
+              {modalData.replies.length > 0 ? (
+                modalData.replies.map((reply, index) => (
+                  <Typography key={index} variant="body2" gutterBottom>
+                    <strong>{reply.reply_user}</strong>: {reply.reply}
+                  </Typography>
+                ))
+              ) : (
+                <Typography variant="body2" sx={{ fontStyle: "italic" }}>
+                  No replies available.
+                </Typography>
+              )}
+            </Box>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={closeModal} color="primary">
-              Close
-            </Button>
-          </DialogActions>
         </Dialog>
       )}
     </Box>
