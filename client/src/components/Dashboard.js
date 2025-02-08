@@ -27,7 +27,7 @@ const Dashboard = () => {
   const [videoMapping, setVideoMapping] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedComment, setSelectedComment] = useState(null);
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalData, setModalData] = useState(null);
 
