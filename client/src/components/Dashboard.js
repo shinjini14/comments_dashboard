@@ -219,9 +219,7 @@ const Dashboard = () => {
           paddingX: 4,
         }}
       >
-        <Typography variant="h5" sx={{ fontWeight: "bold", color: "#303f9f" }}>
-          Comments Overview
-        </Typography>
+      
         <TextField
           variant="outlined"
           placeholder="Search by URL"

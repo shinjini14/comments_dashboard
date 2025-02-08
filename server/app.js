@@ -98,7 +98,7 @@ app.get("/api/videos", async (req, res) => {
   
       // Fetch video preview from statistics table
       const [video] = await pool.query(
-        `SELECT video_preview 
+        `SELECT preview 
         FROM statistics 
         WHERE video_id = $1`, // Use $1 for parameterized queries in pg
         [video_id]
@@ -119,7 +119,7 @@ app.get("/api/videos", async (req, res) => {
       res.json({
         main_comment: mainComment.main_comment,
         main_comment_user: mainComment.main_comment_user,
-        video_preview: video.length > 0 ? video[0].video_preview : null,
+        preview: video.length > 0 ? video[0].preview : null,
         replies,
       });
     } catch (error) {
@@ -128,7 +128,7 @@ app.get("/api/videos", async (req, res) => {
     }
   });
   
-  
+
 
 
 
