@@ -124,8 +124,7 @@ const Dashboard = () => {
       renderCell: (params) => {
         const url = videoMapping[params.row.video_id];
         return url ? (
-          <a
-            href="#"
+          <button
             onClick={(e) => {
               e.preventDefault();
               openModal(params.row);
@@ -134,14 +133,19 @@ const Dashboard = () => {
               color: "#303f9f",
               textDecoration: "none",
               fontWeight: "bold",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
             }}
           >
             {url}
-          </a>
+          </button>
         ) : (
           "N/A"
         );
       },
+      
     },
     {
       field: "updated_at",
