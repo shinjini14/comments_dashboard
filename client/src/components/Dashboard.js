@@ -91,7 +91,7 @@ const Dashboard = () => {
   const openModal = async (comment) => {
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/comments/${comment.video_id}/details`
+        `https://comments-dashboard-server.vercel.app/api/comments/${comment.video_id}/details`
       );
       setModalData(response.data);
       setIsModalOpen(true);
