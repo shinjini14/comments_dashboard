@@ -35,7 +35,7 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [modalData, setModalData] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [translatedComments, setTranslatedComments] = useState({}); // Track translations
+ 
 
   useEffect(() => {
     const fetchData = async () => {
@@ -64,42 +64,14 @@ const Dashboard = () => {
   
   const translateComment = async (comment) => {
     try {
-      // Step 1: Detect the language using an external detection API (MyMemory is unreliable for detection)
-      const detectResponse = await axios.get(
-        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(comment)}&langpair=auto|en`
-      );
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/translate`, {
+        text: comment
+      });
   
-      if (
-        detectResponse.data &&
-        detectResponse.data.responseData &&
-        detectResponse.data.responseData.detectedLanguage
-      ) {
-        const detectedLang = detectResponse.data.responseData.detectedLanguage;
-  
-        console.log("Detected Language:", detectedLang);
-  
-        // If the detected language is already English, no need to translate
-        if (detectedLang === "en") {
-          alert(`Original (English): ${comment}`);
-          return;
-        }
-  
-        // Step 2: Translate if not English
-        const translateResponse = await axios.get(
-          `https://api.mymemory.translated.net/get?q=${encodeURIComponent(comment)}&langpair=${detectedLang}|en`
-        );
-  
-        if (
-          translateResponse.data &&
-          translateResponse.data.responseData &&
-          translateResponse.data.responseData.translatedText
-        ) {
-          alert(`Translated Comment: ${translateResponse.data.responseData.translatedText}`);
-        } else {
-          alert("Translation failed.");
-        }
+      if (response.data.translatedText) {
+        alert(`Translated Comment: ${response.data.translatedText}`);
       } else {
-        alert("Could not detect language.");
+        alert("Translation failed.");
       }
     } catch (error) {
       console.error("Translation Error:", error);
@@ -231,13 +203,13 @@ const Dashboard = () => {
           >
             <GTranslateOutlined />
           </IconButton>
-
           <IconButton color="error" onClick={() => handleDelete(params.row.id)}>
             <Delete />
           </IconButton>
         </Box>
       ),
     },
+    
   ];
 
   if (loading) {

@@ -5,9 +5,17 @@ const jwt = require("jsonwebtoken");
 const pool = require("./db"); // PostgreSQL connection
 const cors = require("cors");
 const path = require("path");
+const { Translate } = require("@google-cloud/translate").v2;
+
+// Load Google service account credentials from Vercel's environment variable
+const credentials = JSON.parse(process.env.GOOGLE_AUTH);
+const translate = new Translate({ credentials });
+
 
 const app = express();
 const PORT = 5000;
+
+
 
 // Middleware
 app.use(express.json());
@@ -17,7 +25,6 @@ app.use(cors());
 
 // Serve the React build
 //app.use(express.static(path.join(__dirname, "../client/build")));
-
 
 
 
@@ -127,6 +134,26 @@ app.get("/api/videos", async (req, res) => {
       res.status(500).json({ error: "Internal server error" });
     }
   });
+
+  // API Route to Translate Comments
+app.post("/api/translate", async (req, res) => {
+    const { text } = req.body;
+  
+    if (!text) {
+      return res.status(400).json({ error: "No text provided for translation." });
+    }
+  
+    try {
+      // Auto-detect the source language & translate to English
+      const [translation] = await translate.translate(text, "en");
+  
+      res.json({ translatedText: translation });
+    } catch (error) {
+      console.error("Translation Error:", error);
+      res.status(500).json({ error: "Translation failed." });
+    }
+  });
+  
   
 
 
