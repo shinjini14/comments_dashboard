@@ -35,6 +35,9 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [modalData, setModalData] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [translatedComments, setTranslatedComments] = useState({});
+  const [translationToggled, setTranslationToggled] = useState({});
+
  
 
   useEffect(() => {
@@ -62,14 +65,24 @@ const Dashboard = () => {
   }, []);
 
   
-  const translateComment = async (comment) => {
+  const translateComment = async (commentId, originalComment) => {
+    // Check if the comment is already translated, toggle back to original
+    if (translationToggled[commentId]) {
+      setTranslationToggled((prev) => ({ ...prev, [commentId]: false }));
+      return;
+    }
+  
     try {
       const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/translate`, {
-        text: comment
+        text: originalComment
       });
   
       if (response.data.translatedText) {
-        alert(`Translated Comment: ${response.data.translatedText}`);
+        setTranslatedComments((prev) => ({
+          ...prev,
+          [commentId]: response.data.translatedText,
+        }));
+        setTranslationToggled((prev) => ({ ...prev, [commentId]: true }));
       } else {
         alert("Translation failed.");
       }
@@ -144,7 +157,17 @@ const Dashboard = () => {
       },
     },
     { field: "main_comment_user", headerName: "Commenter", flex: 1 },
-    { field: "main_comment", headerName: "Message", flex: 2 },
+    {
+      field: "main_comment",
+      headerName: "Message",
+      flex: 2,
+      renderCell: (params) => (
+        <Typography>
+          {translationToggled[params.row.id] ? translatedComments[params.row.id] : params.row.main_comment}
+        </Typography>
+      ),
+    },
+    
     {
       field: "url",
       headerName: "URL",
@@ -189,7 +212,7 @@ const Dashboard = () => {
       field: "actions",
       headerName: "Actions",
       flex: 1,
-      renderCell: (params) => (
+      renderCell: (params) => ( 
         <Box sx={{ display: "flex", gap: 1 }}>
           <IconButton color="primary">
             <ThumbUp />
@@ -199,16 +222,16 @@ const Dashboard = () => {
           </IconButton>
           <IconButton
             color="info"
-            onClick={() => translateComment(params.row.main_comment)}
+            onClick={() => translateComment(params.row.id, params.row.main_comment)}
           >
-            <GTranslateOutlined />
+            {translationToggled[params.row.id] ? <GTranslateOutlined sx={{ color: "green" }} /> : <GTranslateOutlined />}
           </IconButton>
           <IconButton color="error" onClick={() => handleDelete(params.row.id)}>
             <Delete />
           </IconButton>
         </Box>
       ),
-    },
+    }
     
   ];
 
