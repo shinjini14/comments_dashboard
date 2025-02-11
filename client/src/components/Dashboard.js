@@ -12,10 +12,15 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-import { ThumbUp, ThumbDown, Delete, Search } from "@mui/icons-material";
+import {
+  ThumbUp,
+  ThumbDown,
+  Delete,
+  Search,
+  GTranslateOutlined,
+} from "@mui/icons-material";
 import InstagramIcon from "@mui/icons-material/Instagram";
 import FacebookIcon from "@mui/icons-material/Facebook";
 import TwitterIcon from "@mui/icons-material/Twitter";
@@ -30,6 +35,7 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [modalData, setModalData] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [translatedComments, setTranslatedComments] = useState({}); // Track translations
 
   useEffect(() => {
     const fetchData = async () => {
@@ -54,6 +60,55 @@ const Dashboard = () => {
 
     fetchData();
   }, []);
+
+  
+  const translateComment = async (comment) => {
+    try {
+      // Step 1: Detect the language using an external detection API (MyMemory is unreliable for detection)
+      const detectResponse = await axios.get(
+        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(comment)}&langpair=auto|en`
+      );
+  
+      if (
+        detectResponse.data &&
+        detectResponse.data.responseData &&
+        detectResponse.data.responseData.detectedLanguage
+      ) {
+        const detectedLang = detectResponse.data.responseData.detectedLanguage;
+  
+        console.log("Detected Language:", detectedLang);
+  
+        // If the detected language is already English, no need to translate
+        if (detectedLang === "en") {
+          alert(`Original (English): ${comment}`);
+          return;
+        }
+  
+        // Step 2: Translate if not English
+        const translateResponse = await axios.get(
+          `https://api.mymemory.translated.net/get?q=${encodeURIComponent(comment)}&langpair=${detectedLang}|en`
+        );
+  
+        if (
+          translateResponse.data &&
+          translateResponse.data.responseData &&
+          translateResponse.data.responseData.translatedText
+        ) {
+          alert(`Translated Comment: ${translateResponse.data.responseData.translatedText}`);
+        } else {
+          alert("Translation failed.");
+        }
+      } else {
+        alert("Could not detect language.");
+      }
+    } catch (error) {
+      console.error("Translation Error:", error);
+      alert("Failed to translate the comment.");
+    }
+  };
+  
+  
+  
 
   const handleDelete = async (id) => {
     try {
@@ -84,8 +139,6 @@ const Dashboard = () => {
     const url = videoMapping[comment.video_id];
     return url && url.toLowerCase().includes(searchQuery.toLowerCase());
   });
-
-
 
   const openModal = async (comment) => {
     if (!comment || !comment.video_id) {
@@ -149,19 +202,17 @@ const Dashboard = () => {
         );
       },
     },
-   
 
-{
-  field: "updated_at",
-  headerName: "Time",
-  width: 150,
-  renderCell: (params) =>
-    params.value
-      ? format(new Date(params.value), "dd/MM/yyyy, HH:mm")
-      : "N/A",
-},
+    {
+      field: "updated_at",
+      headerName: "Time",
+      width: 150,
+      renderCell: (params) =>
+        params.value
+          ? format(new Date(params.value), "dd/MM/yyyy, HH:mm")
+          : "N/A",
+    },
 
-    
     {
       field: "actions",
       headerName: "Actions",
@@ -174,6 +225,13 @@ const Dashboard = () => {
           <IconButton color="secondary">
             <ThumbDown />
           </IconButton>
+          <IconButton
+            color="info"
+            onClick={() => translateComment(params.row.main_comment)}
+          >
+            <GTranslateOutlined />
+          </IconButton>
+
           <IconButton color="error" onClick={() => handleDelete(params.row.id)}>
             <Delete />
           </IconButton>
