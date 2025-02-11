@@ -162,11 +162,18 @@ const Dashboard = () => {
       headerName: "Message",
       flex: 2,
       renderCell: (params) => (
-        <Typography>
+        <Typography
+          sx={{
+            whiteSpace: "normal",
+            wordBreak: "break-word",
+            overflowWrap: "break-word",
+          }}
+        >
           {translationToggled[params.row.id] ? translatedComments[params.row.id] : params.row.main_comment}
         </Typography>
       ),
     },
+    
     
     {
       field: "url",
@@ -318,6 +325,9 @@ const Dashboard = () => {
           columns={columns}
           pageSize={10}
           getRowId={(row) => row.id}
+          getRowHeight={(params) =>
+            translationToggled[params.id] ? "auto" : 52 // Adjust height dynamically
+          }
           sx={{
             "& .MuiDataGrid-columnHeaders": {
               backgroundColor: "#e0e0e0",
