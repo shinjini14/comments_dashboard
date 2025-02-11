@@ -35,10 +35,10 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [modalData, setModalData] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [translatedComments, setTranslatedComments] = useState({});
-  const [translationToggled, setTranslationToggled] = useState({});
-
- 
+  const [translationModal, setTranslationModal] = useState({
+    open: false,
+    translatedText: "",
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -64,25 +64,17 @@ const Dashboard = () => {
     fetchData();
   }, []);
 
-  
   const translateComment = async (commentId, originalComment) => {
-    // Check if the comment is already translated, toggle back to original
-    if (translationToggled[commentId]) {
-      setTranslationToggled((prev) => ({ ...prev, [commentId]: false }));
-      return;
-    }
-  
     try {
       const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/translate`, {
-        text: originalComment
+        text: originalComment,
       });
   
       if (response.data.translatedText) {
-        setTranslatedComments((prev) => ({
-          ...prev,
-          [commentId]: response.data.translatedText,
-        }));
-        setTranslationToggled((prev) => ({ ...prev, [commentId]: true }));
+        setTranslationModal({
+          open: true,
+          translatedText: response.data.translatedText,
+        });
       } else {
         alert("Translation failed.");
       }
@@ -92,9 +84,6 @@ const Dashboard = () => {
     }
   };
   
-  
-  
-
   const handleDelete = async (id) => {
     try {
       await axios.delete(`${process.env.REACT_APP_API_URL}/api/comments/${id}`);
@@ -169,12 +158,11 @@ const Dashboard = () => {
             overflowWrap: "break-word",
           }}
         >
-          {translationToggled[params.row.id] ? translatedComments[params.row.id] : params.row.main_comment}
+          {params.row.main_comment}
         </Typography>
       ),
     },
-    
-    
+
     {
       field: "url",
       headerName: "URL",
@@ -219,7 +207,7 @@ const Dashboard = () => {
       field: "actions",
       headerName: "Actions",
       flex: 1,
-      renderCell: (params) => ( 
+      renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
           <IconButton color="primary">
             <ThumbUp />
@@ -231,15 +219,14 @@ const Dashboard = () => {
             color="info"
             onClick={() => translateComment(params.row.id, params.row.main_comment)}
           >
-            {translationToggled[params.row.id] ? <GTranslateOutlined sx={{ color: "green" }} /> : <GTranslateOutlined />}
+            <GTranslateOutlined />
           </IconButton>
           <IconButton color="error" onClick={() => handleDelete(params.row.id)}>
             <Delete />
           </IconButton>
         </Box>
       ),
-    }
-    
+    } 
   ];
 
   if (loading) {
@@ -325,9 +312,7 @@ const Dashboard = () => {
           columns={columns}
           pageSize={10}
           getRowId={(row) => row.id}
-          getRowHeight={(params) =>
-            translationToggled[params.id] ? "auto" : 52 // Adjust height dynamically
-          }
+          
           sx={{
             "& .MuiDataGrid-columnHeaders": {
               backgroundColor: "#e0e0e0",
@@ -343,6 +328,29 @@ const Dashboard = () => {
           }}
         />
       </Box>
+      <Dialog
+        open={translationModal.open}
+        onClose={() => setTranslationModal({ open: false, translatedText: "" })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ backgroundColor: "#303f9f", color: "#fff" }}>
+          Translated Comment
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: "18px", color: "#333", padding: "10px" }}>
+            {translationModal.translatedText}
+          </Typography>
+        </DialogContent>
+        <Button
+          onClick={() =>
+            setTranslationModal({ open: false, translatedText: "" })
+          }
+          sx={{ alignSelf: "flex-end", margin: "10px" }}
+        >
+          Close
+        </Button>
+      </Dialog>
 
       {modalData && (
         <Dialog open={isModalOpen} onClose={closeModal} maxWidth="md" fullWidth>
