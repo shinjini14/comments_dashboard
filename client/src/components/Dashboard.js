@@ -240,16 +240,19 @@ const Dashboard = () => {
       renderCell: (params) => (
         <Box
           sx={{
-            display: "inline-block",
-            padding: "4px 10px",
-            borderRadius: "16px", // More rounded like a pill
-            backgroundColor: params.row.sentiment_tag === "bad" ? "rgba(211, 47, 47, 0.1)" : "rgba(56, 142, 60, 0.1)", // Very light red/green
-            color: params.row.sentiment_tag === "bad" ? "#D32F2F" : "#388E3C", // Darker red/green text
+            display: "inline-flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: "2px 8px", // Reduce padding for a smaller look
+            borderRadius: "12px", // Keeps it pill-shaped but smaller
+            backgroundColor: params.row.sentiment_tag === "bad" ? "rgba(211, 47, 47, 0.15)" : "rgba(56, 142, 60, 0.15)", // Softer background
+            color: params.row.sentiment_tag === "bad" ? "#D32F2F" : "#388E3C", // Keep color distinct
             fontWeight: "500",
-            fontSize: "14px",
+            fontSize: "12px", // Make the text smaller
             textTransform: "capitalize",
             textAlign: "center",
-            minWidth: "60px", // Ensures consistent width
+            minWidth: "50px", // Keeps consistency without taking too much space
+            maxHeight: "20px", // Ensures it doesn't stretch the cell
           }}
         >
           {params.row.sentiment_tag}
