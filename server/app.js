@@ -160,14 +160,14 @@ const processBatch = async (batch) => {
             return { id: comment.id, text: comment.main_comment };
           } catch (error) {
             console.error(`❌ Translation failed for comment ID ${comment.id}:`, error);
-            return { id: comment.id, text: comment.main_comment };
+            return { id: comment.id, text: comment.main_comment }; // Use original text if translation fails
           }
         })
       );
   
       console.log(`📤 Sending batch of ${translatedComments.length} comments for sentiment analysis...`);
   
-      // Step 2: Send translated comments for sentiment analysis in a single request
+      // Step 2: Send translated comments for sentiment analysis
       const apiPayload = { comments: translatedComments.map((c) => c.text) };
       let response;
   
@@ -214,9 +214,9 @@ const processBatch = async (batch) => {
   // API Route to Start Processing
   app.post("/api/comments/analyze", async (req, res) => {
     try {
-      console.log("📢 Starting sentiment analysis for comments...");
+      console.log("📢 Starting sentiment analysis for all untagged comments...");
   
-      // Fetch all comments that don't have a sentiment_tag
+      // Fetch all untagged comments (sentiment_tag IS NULL)
       const { rows: comments } = await pool.query(
         "SELECT id, main_comment FROM comments_api WHERE sentiment_tag IS NULL"
       );
@@ -228,14 +228,18 @@ const processBatch = async (batch) => {
   
       console.log(`✅ Fetched ${comments.length} new comments.`);
   
-      // Process comments in batches asynchronously
+      // Process all untagged comments in batches asynchronously
+      let batchIndex = 1;
       for (let i = 0; i < comments.length; i += BATCH_SIZE) {
         const batch = comments.slice(i, i + BATCH_SIZE);
-        processBatch(batch);
+        console.log(`⏳ Processing batch ${batchIndex}/${Math.ceil(comments.length / BATCH_SIZE)}`);
+        processBatch(batch); // Run each batch asynchronously
+        batchIndex++;
       }
   
-      console.log("🎉 Processing started, running in the background...");
+      console.log("🎉 Sentiment analysis started. Processing in background.");
       res.json({ message: "Sentiment analysis started. Results will update soon." });
+  
     } catch (error) {
       console.error("❌ Error analyzing comments:", error);
       res.status(500).json({ error: "Internal Server Error" });
