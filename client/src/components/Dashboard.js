@@ -266,25 +266,34 @@ const Dashboard = () => {
       headerName: "Actions",
       flex: 1,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", gap: 1 }}>
-          <IconButton color="primary">
-            <ThumbUp />
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "4px", // Reduced spacing between icons
+          }}
+        >
+          <IconButton color="primary" sx={{ fontSize: "14px", padding: "4px" }}>
+            <ThumbUp sx={{ fontSize: "16px" }} />
           </IconButton>
-          <IconButton color="secondary">
-            <ThumbDown />
+          <IconButton color="secondary" sx={{ fontSize: "14px", padding: "4px" }}>
+            <ThumbDown sx={{ fontSize: "16px" }} />
           </IconButton>
           <IconButton
             color="info"
+            sx={{ fontSize: "14px", padding: "4px" }}
             onClick={() => translateComment(params.row.id, params.row.main_comment)}
           >
-            <GTranslateOutlined />
+            <GTranslateOutlined sx={{ fontSize: "16px" }} />
           </IconButton>
-          <IconButton color="error" onClick={() => handleDelete(params.row.id)}>
-            <Delete />
+          <IconButton color="error" sx={{ fontSize: "14px", padding: "4px" }} onClick={() => handleDelete(params.row.id)}>
+            <Delete sx={{ fontSize: "16px" }} />
           </IconButton>
         </Box>
       ),
-    } 
+    },
+    
   ];
 
   if (loading) {
