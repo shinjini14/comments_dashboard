@@ -238,17 +238,23 @@ const Dashboard = () => {
       headerName: "Sentiment",
       flex: 1,
       renderCell: (params) => (
-        <Typography
+        <Box
           sx={{
-            fontWeight: "bold",
-            color: params.row.sentiment_tag === "bad" ? "red" : "green",
+            display: "inline-block",
+            padding: "4px 10px",
+            borderRadius: "12px",
+            backgroundColor: params.row.sentiment_tag === "bad" ? "#FFEBEE" : "#E8F5E9", // Light red or green background
+            color: params.row.sentiment_tag === "bad" ? "#D32F2F" : "#388E3C", // Dark red or green text
+            fontWeight: "500",
+            fontSize: "14px",
+            textTransform: "capitalize",
           }}
         >
           {params.row.sentiment_tag}
-        </Typography>
+        </Box>
       ),
     },
-
+    
     {
       field: "actions",
       headerName: "Actions",
