@@ -19,7 +19,8 @@ import {
   ThumbDown,
   Delete,
   Search,
-  GTranslateOutlined,
+  GTranslateOutlined
+  
 } from "@mui/icons-material";
 import InstagramIcon from "@mui/icons-material/Instagram";
 import FacebookIcon from "@mui/icons-material/Facebook";
@@ -35,34 +36,55 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [modalData, setModalData] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [translationModal, setTranslationModal] = useState({
     open: false,
     translatedText: "",
   });
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [commentsRes, videosRes] = await Promise.all([
-          axios.get(`${process.env.REACT_APP_API_URL}/api/comments`),
-          axios.get(`${process.env.REACT_APP_API_URL}/api/videos`),
-        ]);
-        setComments(commentsRes.data);
-
-        const mapping = {};
-        videosRes.data.forEach((video) => {
-          mapping[video.id] = video.url;
-        });
-        setVideoMapping(mapping);
-      } catch (error) {
-        console.error("Error fetching data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
+  
     fetchData();
   }, []);
+
+  const fetchData = async () => {
+    try {
+      const [commentsRes, videosRes] = await Promise.all([
+        axios.get(`${process.env.REACT_APP_API_URL}/api/comments`),
+        axios.get(`${process.env.REACT_APP_API_URL}/api/videos`),
+      ]);
+      setComments(commentsRes.data);
+
+      const mapping = {};
+      videosRes.data.forEach((video) => {
+        mapping[video.id] = video.url;
+      });
+      setVideoMapping(mapping);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+    // Run sentiment analysis
+ const runSentimentAnalysis = async () => {
+  try {
+    setAnalyzing(true);
+    await axios.post(`${process.env.REACT_APP_API_URL}/api/comments/analyze`);
+    console.log("✅ Sentiment analysis completed.");
+    fetchData(); // Refresh comments after analysis
+  } catch (error) {
+    console.error("❌ Error running sentiment analysis:", error);
+  } finally {
+    setAnalyzing(false);
+  }
+};
+
+
+
+ 
+
 
   const translateComment = async (commentId, originalComment) => {
     try {
@@ -93,6 +115,8 @@ const Dashboard = () => {
     }
   };
 
+
+
   const handleLogout = () => {
     localStorage.clear();
     window.location.href = "/";
@@ -109,9 +133,15 @@ const Dashboard = () => {
     return null;
   };
 
-  const filteredComments = comments.filter((comment) => {
+  const filteredAndSortedComments = [...comments]
+  .filter((comment) => {
     const url = videoMapping[comment.video_id];
     return url && url.toLowerCase().includes(searchQuery.toLowerCase());
+  })
+  .sort((a, b) => {
+    if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
+    if (a.sentiment_tag !== "bad" && b.sentiment_tag === "bad") return 1;
+    return 0;
   });
 
   const openModal = async (comment) => {
@@ -204,6 +234,22 @@ const Dashboard = () => {
     },
 
     {
+      field: "sentiment_tag",
+      headerName: "Sentiment",
+      flex: 1,
+      renderCell: (params) => (
+        <Typography
+          sx={{
+            fontWeight: "bold",
+            color: params.row.sentiment_tag === "bad" ? "red" : "green",
+          }}
+        >
+          {params.row.sentiment_tag}
+        </Typography>
+      ),
+    },
+
+    {
       field: "actions",
       headerName: "Actions",
       flex: 1,
@@ -261,6 +307,7 @@ const Dashboard = () => {
           <Button variant="outlined" color="inherit" onClick={handleLogout}>
             Logout
           </Button>
+         
         </Toolbar>
       </AppBar>
 
@@ -274,6 +321,16 @@ const Dashboard = () => {
           paddingX: 4,
         }}
       >
+          <Button
+          variant="contained"
+          color="primary"
+          onClick={runSentimentAnalysis}
+          disabled={analyzing}
+          sx={{ marginBottom: 2 }}
+        >
+          {analyzing ? <CircularProgress size={20} sx={{ marginRight: 1 }} /> : null}
+          Run Sentiment Analysis
+        </Button>
         <Typography variant="h5" sx={{ fontWeight: "bold", color: "#303f9f" }}>
           Comments Overview
         </Typography>
@@ -308,7 +365,7 @@ const Dashboard = () => {
 
       <Box sx={{ paddingX: 4 }}>
         <DataGrid
-          rows={filteredComments}
+          rows={filteredAndSortedComments}
           columns={columns}
           pageSize={10}
           getRowId={(row) => row.id}
