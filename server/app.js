@@ -21,6 +21,9 @@ const PORT = 5000;
 app.use(express.json());
 app.use(cors());
 
+// Batch size to process comments in chunks
+const BATCH_SIZE = 1000;
+
 
 
 // Serve the React build
@@ -143,78 +146,80 @@ app.get("/api/videos", async (req, res) => {
     try {
       console.log("📢 Starting sentiment analysis for comments...");
   
-      // Fetch all comments that don't have a sentiment_tag
-      const { rows: comments } = await pool.query("SELECT id, main_comment FROM comments_api WHERE sentiment_tag IS NULL");
+      // Fetch all comments that don't have a sentiment_tag (in batches)
+      const { rows: comments } = await pool.query(
+        "SELECT id, main_comment FROM comments_api WHERE sentiment_tag IS NULL"
+      );
   
       if (comments.length === 0) {
         console.log("✅ No new comments to analyze.");
         return res.json({ message: "No new comments to analyze." });
       }
   
-      console.log(`✅ Fetched ${comments.length} new comments from the database.`);
-      console.log("📥 Comments Data:", comments);
+      console.log(`✅ Fetched ${comments.length} new comments.`);
   
-      // Step 1: Detect and translate non-English comments
-      let translatedComments = [];
-      for (const comment of comments) {
+      // Process comments in batches to avoid timeouts
+      for (let i = 0; i < comments.length; i += BATCH_SIZE) {
+        const batch = comments.slice(i, i + BATCH_SIZE);
+        console.log(`🚀 Processing batch ${i / BATCH_SIZE + 1}/${Math.ceil(comments.length / BATCH_SIZE)} (Size: ${batch.length})`);
+  
+        // Step 1: Detect and translate non-English comments in parallel
+        const translatedComments = await Promise.all(
+          batch.map(async (comment) => {
+            try {
+              const [detection] = await translate.detect(comment.main_comment);
+              if (detection.language !== "en") {
+                const [translated] = await translate.translate(comment.main_comment, "en");
+                return { id: comment.id, text: translated };
+              }
+              return { id: comment.id, text: comment.main_comment };
+            } catch (error) {
+              console.error(`❌ Translation failed for comment ID ${comment.id}:`, error);
+              return { id: comment.id, text: comment.main_comment };
+            }
+          })
+        );
+  
+        console.log(`📤 Sending batch of ${translatedComments.length} comments for sentiment analysis...`);
+  
+        // Step 2: Send translated comments for sentiment analysis in a single request
+        const apiPayload = { comments: translatedComments.map((c) => c.text) };
+  
+        let response;
         try {
-          // Detect language
-          const [detection] = await translate.detect(comment.main_comment);
-          if (detection.language !== "en") {
-            console.log(`🌍 Translating comment ID ${comment.id} from ${detection.language} to English...`);
-            const [translated] = await translate.translate(comment.main_comment, "en");
-            translatedComments.push({ id: comment.id, text: translated });
-          } else {
-            console.log(`✅ Comment ID ${comment.id} is already in English. Sending as-is.`);
-            translatedComments.push({ id: comment.id, text: comment.main_comment });
-          }
-        } catch (translateError) {
-          console.error(`❌ Translation failed for comment ID ${comment.id}:`, translateError);
-          translatedComments.push({ id: comment.id, text: comment.main_comment }); // Use original text if translation fails
+          response = await axios.post("http://34.66.186.236/api/v0/get_comments_prediction", apiPayload);
+          console.log("📥 Received sentiment analysis response.");
+        } catch (apiError) {
+          console.error("❌ Error calling sentiment API:", apiError.response ? apiError.response.data : apiError);
+          return res.status(500).json({ error: "Failed to connect to sentiment prediction API." });
         }
-      }
   
-      console.log("📤 Sending translated comments to prediction API:", JSON.stringify(translatedComments, null, 2));
+        if (!response.data.success || !response.data.comments) {
+          console.error("❌ Invalid response from sentiment API:", response.data);
+          return res.status(500).json({ error: "Invalid sentiment API response." });
+        }
   
-      // Step 2: Send translated comments for sentiment analysis
-      const apiPayload = { comments: translatedComments.map((c) => c.text) };
+        const predictions = response.data.comments;
+        if (predictions.length !== translatedComments.length) {
+          console.error(`❌ Mismatch: Expected ${translatedComments.length} predictions, got ${predictions.length}`);
+          return res.status(500).json({ error: "Mismatch in sentiment results." });
+        }
   
-      let response;
-      try {
-        response = await axios.post("http://34.66.186.236/api/v0/get_comments_prediction", apiPayload);
-        console.log("📥 Received response from prediction API:", JSON.stringify(response.data, null, 2));
-      } catch (apiError) {
-        console.error("❌ Error calling prediction API:", apiError.response ? apiError.response.data : apiError);
-        return res.status(500).json({ error: "Failed to connect to sentiment prediction API." });
-      }
-  
-      // Step 3: Validate API response
-      if (!response.data.success || !response.data.comments) {
-        console.error("❌ Prediction API returned an invalid response:", response.data);
-        return res.status(500).json({ error: "Invalid response from sentiment prediction API." });
-      }
-  
-      const predictions = response.data.comments;
-      console.log("✅ Sentiment Predictions Received:", predictions);
-  
-      // Step 4: Validate the predictions length matches the number of comments
-      if (predictions.length !== translatedComments.length) {
-        console.error(`❌ Mismatch: Expected ${translatedComments.length} predictions but got ${predictions.length}`);
-        return res.status(500).json({ error: "Mismatch in prediction results." });
-      }
-  
-      // Step 5: Update sentiment_tag column in the database
-      for (let i = 0; i < translatedComments.length; i++) {
-        const sentimentTag = predictions[i] === "negative" ? "bad" : "good";
+        // Step 3: Bulk update sentiment tags in the database
+        const updateQuery = `
+          UPDATE comments_api SET sentiment_tag = CASE
+            ${translatedComments
+              .map((c, index) => `WHEN id = ${c.id} THEN '${predictions[index] === "negative" ? "bad" : "good"}'`)
+              .join(" ")}
+          END
+          WHERE id IN (${translatedComments.map((c) => c.id).join(",")});
+        `;
   
         try {
-          await pool.query("UPDATE comments_api SET sentiment_tag = $1 WHERE id = $2", [
-            sentimentTag,
-            translatedComments[i].id,
-          ]);
-          console.log(`✅ Updated comment ID ${translatedComments[i].id} as '${sentimentTag}'`);
+          await pool.query(updateQuery);
+          console.log(`✅ Successfully updated ${translatedComments.length} comments in the database.`);
         } catch (updateError) {
-          console.error(`❌ Error updating comment ID ${translatedComments[i].id}:`, updateError);
+          console.error("❌ Error updating database:", updateError);
         }
       }
   
@@ -226,7 +231,6 @@ app.get("/api/videos", async (req, res) => {
       res.status(500).json({ error: "Internal Server Error" });
     }
   });
-
 
   // API Route to Translate Comments
 app.post("/api/translate", async (req, res) => {
