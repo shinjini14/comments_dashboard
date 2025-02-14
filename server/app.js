@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const pool = require("./db"); // PostgreSQL connection
 const cors = require("cors");
 const path = require("path");
+import axios from "axios";
 const { Translate } = require("@google-cloud/translate").v2;
 
 // Load Google service account credentials from Vercel's environment variable
