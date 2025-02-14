@@ -240,20 +240,24 @@ const Dashboard = () => {
       renderCell: (params) => (
         <Box
           sx={{
-            display: "inline-block",
-            padding: "4px 10px",
-            borderRadius: "12px",
-            backgroundColor: params.row.sentiment_tag === "bad" ? "#FFEBEE" : "#E8F5E9", // Light red or green background
-            color: params.row.sentiment_tag === "bad" ? "#D32F2F" : "#388E3C", // Dark red or green text
-            fontWeight: "500",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: "6px 16px", // More padding for a better look
+            borderRadius: "6px", // Slightly rounded edges
+            backgroundColor: params.row.sentiment_tag === "bad" ? "#FFCDD2" : "#C8E6C9", // Softer red/green
+            color: params.row.sentiment_tag === "bad" ? "#C62828" : "#2E7D32", // Darker red/green text
+            fontWeight: "bold",
             fontSize: "14px",
-            textTransform: "capitalize",
+            minWidth: "80px", // Ensures uniform width
+            textAlign: "center",
           }}
         >
           {params.row.sentiment_tag}
         </Box>
       ),
     },
+    
     
     {
       field: "actions",
