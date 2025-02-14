@@ -275,20 +275,20 @@ const Dashboard = () => {
           }}
         >
           <IconButton color="primary" sx={{ fontSize: "14px", padding: "4px" }}>
-            <ThumbUp sx={{ fontSize: "16px" }} />
+            <ThumbUp sx={{ fontSize: "20px" }} />
           </IconButton>
           <IconButton color="secondary" sx={{ fontSize: "14px", padding: "4px" }}>
-            <ThumbDown sx={{ fontSize: "16px" }} />
+            <ThumbDown sx={{ fontSize: "20px" }} />
           </IconButton>
           <IconButton
             color="info"
             sx={{ fontSize: "14px", padding: "4px" }}
             onClick={() => translateComment(params.row.id, params.row.main_comment)}
           >
-            <GTranslateOutlined sx={{ fontSize: "16px" }} />
+            <GTranslateOutlined sx={{ fontSize: "20px" }} />
           </IconButton>
           <IconButton color="error" sx={{ fontSize: "14px", padding: "4px" }} onClick={() => handleDelete(params.row.id)}>
-            <Delete sx={{ fontSize: "16px" }} />
+            <Delete sx={{ fontSize: "20px" }} />
           </IconButton>
         </Box>
       ),
