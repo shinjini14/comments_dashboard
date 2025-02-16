@@ -342,16 +342,7 @@ const Dashboard = () => {
           paddingX: 4,
         }}
       >
-          <Button
-          variant="contained"
-          color="primary"
-          onClick={runSentimentAnalysis}
-          disabled={analyzing}
-          sx={{ marginBottom: 2 }}
-        >
-          {analyzing ? <CircularProgress size={20} sx={{ marginRight: 1 }} /> : null}
-          Run Sentiment Analysis
-        </Button>
+         
         <Typography variant="h5" sx={{ fontWeight: "bold", color: "#303f9f" }}>
           Comments Overview
         </Typography>

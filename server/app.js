@@ -142,13 +142,30 @@ app.get("/api/videos", async (req, res) => {
     }
   });
 
+  // Function to retry sentiment API request in case of failure
+const fetchSentimentWithRetry = async (payload, retries = 3) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await axios.post("http://34.66.186.236/api/v0/get_comments_prediction", payload);
+        if (response.data.success) return response.data.comments; // If API succeeds, return results
+        console.warn("⚠️ Sentiment API returned unsuccessful response. Retrying...");
+      } catch (error) {
+        console.error(`❌ Sentiment API call failed (attempt ${i + 1}):`, error.response ? error.response.data : error);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2s before retrying
+    }
+    console.error("🚨 Sentiment API failed after multiple retries.");
+    return null; // Return null if all retries fail
+  };
+  
+
 
  // Function to process a batch of comments
  const processBatch = async (batch) => {
     try {
       console.log(`🚀 Processing batch of ${batch.length} comments...`);
   
-      // Step 1: Translate non-English comments in parallel
+      // Step 1: Detect and translate non-English comments in parallel
       const translatedComments = await Promise.all(
         batch.map(async (comment) => {
           try {
@@ -160,7 +177,7 @@ app.get("/api/videos", async (req, res) => {
             return { id: comment.id, text: comment.main_comment };
           } catch (error) {
             console.error(`❌ Translation failed for comment ID ${comment.id}:`, error);
-            return { id: comment.id, text: comment.main_comment };
+            return { id: comment.id, text: comment.main_comment }; // Use original text if translation fails
           }
         })
       );
