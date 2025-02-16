@@ -211,13 +211,34 @@ app.get("/api/videos", async (req, res) => {
     }
   };
   
+
+  const processAllComments = (comments) => {
+    setImmediate(async () => {
+      try {
+        let batchIndex = 1;
+        for (let i = 0; i < comments.length; i += BATCH_SIZE) {
+          const batch = comments.slice(i, i + BATCH_SIZE);
+          console.log(`⏳ Processing batch ${batchIndex}/${Math.ceil(comments.length / BATCH_SIZE)}`);
+          await processBatch(batch); // Ensure each batch completes before moving on
+          batchIndex++;
+        }
+        console.log("🎉 Sentiment analysis completed in the background.");
+      } catch (error) {
+        console.error("❌ Error processing all comments:", error);
+      }
+    });
+  };
+  
+
+  
+  
   
   // API Route to Start Processing
   app.post("/api/comments/analyze", async (req, res) => {
     try {
       console.log("📢 Starting sentiment analysis for ALL comments...");
   
-      // Fetch all comments from the database (not just untagged ones)
+      // Fetch all comments (NOT just untagged ones)
       const { rows: comments } = await pool.query(
         "SELECT id, main_comment FROM comments_api"
       );
@@ -227,19 +248,13 @@ app.get("/api/videos", async (req, res) => {
         return res.json({ message: "No comments found." });
       }
   
-      console.log(`✅ Fetched ${comments.length} comments.`);
+      console.log(`✅ Queuing ${comments.length} comments for processing...`);
   
-      // Process all comments in batches asynchronously
-      let batchIndex = 1;
-      for (let i = 0; i < comments.length; i += BATCH_SIZE) {
-        const batch = comments.slice(i, i + BATCH_SIZE);
-        console.log(`⏳ Processing batch ${batchIndex}/${Math.ceil(comments.length / BATCH_SIZE)}`);
-        await processBatch(batch); // Ensure each batch completes before moving on
-        batchIndex++;
-      }
+      // Process comments asynchronously (in background)
+      processAllComments(comments);
   
-      console.log("🎉 Sentiment analysis completed.");
-      res.json({ message: "Sentiment analysis completed successfully." });
+      // Return immediately to avoid timeout
+      res.json({ message: "Sentiment analysis started. Results will update soon." });
   
     } catch (error) {
       console.error("❌ Error analyzing comments:", error);
