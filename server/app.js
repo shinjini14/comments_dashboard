@@ -148,7 +148,7 @@ app.get("/api/videos", async (req, res) => {
     try {
       console.log(`🚀 Processing batch of ${batch.length} comments...`);
   
-      // Step 1: Detect and translate non-English comments in parallel
+      // Step 1: Translate non-English comments in parallel
       const translatedComments = await Promise.all(
         batch.map(async (comment) => {
           try {
@@ -160,51 +160,36 @@ app.get("/api/videos", async (req, res) => {
             return { id: comment.id, text: comment.main_comment };
           } catch (error) {
             console.error(`❌ Translation failed for comment ID ${comment.id}:`, error);
-            return { id: comment.id, text: comment.main_comment }; // Use original text if translation fails
+            return { id: comment.id, text: comment.main_comment };
           }
         })
       );
   
       console.log(`📤 Sending batch of ${translatedComments.length} comments for sentiment analysis...`);
   
-      // Step 2: Send translated comments for sentiment analysis
-      const apiPayload = { comments: translatedComments.map((c) => c.text) };
-      let response;
+      // Step 2: Send translated comments for sentiment analysis with retry
+      const predictions = await fetchSentimentWithRetry({ comments: translatedComments.map((c) => c.text) });
+      if (!predictions) return; // Skip if sentiment API failed
   
+      // Step 3: Bulk update sentiment tags using transactions
+      const client = await pool.connect();
       try {
-        response = await axios.post("http://34.66.186.236/api/v0/get_comments_prediction", apiPayload);
-        console.log("📥 Received sentiment analysis response.");
-      } catch (apiError) {
-        console.error("❌ Error calling sentiment API:", apiError.response ? apiError.response.data : apiError);
-        return;
-      }
+        await client.query("BEGIN");
   
-      if (!response.data.success || !response.data.comments) {
-        console.error("❌ Invalid response from sentiment API:", response.data);
-        return;
-      }
+        for (let i = 0; i < translatedComments.length; i++) {
+          await client.query(
+            "UPDATE comments_api SET sentiment_tag = $1 WHERE id = $2",
+            [predictions[i] === "negative" ? "bad" : "good", translatedComments[i].id]
+          );
+        }
   
-      const predictions = response.data.comments;
-      if (predictions.length !== translatedComments.length) {
-        console.error(`❌ Mismatch: Expected ${translatedComments.length} predictions, got ${predictions.length}`);
-        return;
-      }
-  
-      // Step 3: Bulk update sentiment tags in the database
-      const updateQuery = `
-        UPDATE comments_api SET sentiment_tag = CASE
-          ${translatedComments
-            .map((c, index) => `WHEN id = ${c.id} THEN '${predictions[index] === "negative" ? "bad" : "good"}'`)
-            .join(" ")}
-        END
-        WHERE id IN (${translatedComments.map((c) => c.id).join(",")});
-      `;
-  
-      try {
-        await pool.query(updateQuery);
+        await client.query("COMMIT");
         console.log(`✅ Successfully updated ${translatedComments.length} comments in the database.`);
       } catch (updateError) {
-        console.error("❌ Error updating database:", updateError);
+        await client.query("ROLLBACK");
+        console.error("❌ Database update failed:", updateError);
+      } finally {
+        client.release();
       }
     } catch (error) {
       console.error("❌ Error processing batch:", error);
