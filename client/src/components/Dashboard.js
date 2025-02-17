@@ -36,7 +36,6 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [modalData, setModalData] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
   const [translationModal, setTranslationModal] = useState({
     open: false,
     translatedText: "",
@@ -67,26 +66,8 @@ const Dashboard = () => {
     }
   };
 
-    // Run sentiment analysis
- const runSentimentAnalysis = async () => {
-  try {
-    setAnalyzing(true);
-    await axios.post(`${process.env.REACT_APP_API_URL}/api/comments/analyze`);
-    console.log("✅ Sentiment analysis completed.");
-    fetchData(); // Refresh comments after analysis
-  } catch (error) {
-    console.error("❌ Error running sentiment analysis:", error);
-  } finally {
-    setAnalyzing(false);
-  }
-};
-
-
-
  
-
-
-  const translateComment = async (commentId, originalComment) => {
+ const translateComment = async (commentId, originalComment) => {
     try {
       const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/translate`, {
         text: originalComment,
