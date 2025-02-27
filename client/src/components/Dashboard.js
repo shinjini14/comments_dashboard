@@ -19,8 +19,7 @@ import {
   ThumbDown,
   Delete,
   Search,
-  GTranslateOutlined
-  
+  GTranslateOutlined,
 } from "@mui/icons-material";
 import InstagramIcon from "@mui/icons-material/Instagram";
 import FacebookIcon from "@mui/icons-material/Facebook";
@@ -42,7 +41,6 @@ const Dashboard = () => {
   });
 
   useEffect(() => {
-  
     fetchData();
   }, []);
 
@@ -66,13 +64,15 @@ const Dashboard = () => {
     }
   };
 
- 
- const translateComment = async (commentId, originalComment) => {
+  const translateComment = async (commentId, originalComment) => {
     try {
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/translate`, {
-        text: originalComment,
-      });
-  
+      const response = await axios.post(
+        `${process.env.REACT_APP_API_URL}/api/translate`,
+        {
+          text: originalComment,
+        }
+      );
+
       if (response.data.translatedText) {
         setTranslationModal({
           open: true,
@@ -86,7 +86,7 @@ const Dashboard = () => {
       alert("Failed to translate the comment.");
     }
   };
-  
+
   const handleDelete = async (id) => {
     try {
       await axios.delete(`${process.env.REACT_APP_API_URL}/api/comments/${id}`);
@@ -95,8 +95,6 @@ const Dashboard = () => {
       console.error("Error deleting comment:", error);
     }
   };
-
-
 
   const handleLogout = () => {
     localStorage.clear();
@@ -115,15 +113,15 @@ const Dashboard = () => {
   };
 
   const filteredAndSortedComments = [...comments]
-  .filter((comment) => {
-    const url = videoMapping[comment.video_id];
-    return url && url.toLowerCase().includes(searchQuery.toLowerCase());
-  })
-  .sort((a, b) => {
-    if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
-    if (a.sentiment_tag !== "bad" && b.sentiment_tag === "bad") return 1;
-    return 0;
-  });
+    .filter((comment) => {
+      const url = videoMapping[comment.video_id];
+      return url && url.toLowerCase().includes(searchQuery.toLowerCase());
+    })
+    .sort((a, b) => {
+      if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
+      if (a.sentiment_tag !== "bad" && b.sentiment_tag === "bad") return 1;
+      return 0;
+    });
 
   const openModal = async (comment) => {
     if (!comment || !comment.video_id) {
@@ -134,7 +132,17 @@ const Dashboard = () => {
       const response = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/comments/${comment.video_id}/details`
       );
-      setModalData({ ...response.data, video_id: comment.video_id });
+
+      const structuredData = {
+        main_comment_user: comment.main_comment_user,
+        main_comment: comment.main_comment,
+        preview: response.data.preview || null,
+        video_id: comment.video_id,
+        replies: response.data.replies || [], // Ensure replies are mapped properly
+        sentiment_tag: comment.sentiment_tag, // Add sentiment for styling
+      };
+
+      setModalData(structuredData);
       setIsModalOpen(true);
     } catch (error) {
       console.error("Error fetching comment details:", error);
@@ -163,45 +171,21 @@ const Dashboard = () => {
       flex: 2,
       renderCell: (params) => (
         <Typography
+          onClick={() => openModal(params.row)}
           sx={{
             whiteSpace: "normal",
             wordBreak: "break-word",
             overflowWrap: "break-word",
+            cursor: "pointer",
+            color: "#000",
+            "&:hover": {
+              textDecoration: "none",
+            },
           }}
         >
           {params.row.main_comment}
         </Typography>
       ),
-    },
-
-    {
-      field: "url",
-      headerName: "URL",
-      flex: 2,
-      renderCell: (params) => {
-        const url = videoMapping[params.row.video_id];
-        return url ? (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              openModal(params.row);
-            }}
-            style={{
-              color: "#303f9f",
-              textDecoration: "none",
-              fontWeight: "bold",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-            }}
-          >
-            {url}
-          </button>
-        ) : (
-          "N/A"
-        );
-      },
     },
 
     {
@@ -226,7 +210,10 @@ const Dashboard = () => {
             alignItems: "center",
             padding: "2px 8px", // Reduce padding for a smaller look
             borderRadius: "12px", // Keeps it pill-shaped but smaller
-            backgroundColor: params.row.sentiment_tag === "bad" ? "rgba(211, 47, 47, 0.15)" : "rgba(56, 142, 60, 0.15)", // Softer background
+            backgroundColor:
+              params.row.sentiment_tag === "bad"
+                ? "rgba(211, 47, 47, 0.15)"
+                : "rgba(56, 142, 60, 0.15)", // Softer background
             color: params.row.sentiment_tag === "bad" ? "#D32F2F" : "#388E3C", // Keep color distinct
             fontWeight: "500",
             fontSize: "12px", // Make the text smaller
@@ -240,8 +227,7 @@ const Dashboard = () => {
         </Box>
       ),
     },
-    
-    
+
     {
       field: "actions",
       headerName: "Actions",
@@ -249,7 +235,7 @@ const Dashboard = () => {
       renderCell: (params) => (
         <Box
           sx={{
-            display: "flex",
+            display: "box",
             alignItems: "center",
             justifyContent: "center",
             gap: "4px", // Reduced spacing between icons
@@ -258,23 +244,31 @@ const Dashboard = () => {
           <IconButton color="primary" sx={{ fontSize: "14px", padding: "4px" }}>
             <ThumbUp sx={{ fontSize: "20px" }} />
           </IconButton>
-          <IconButton color="secondary" sx={{ fontSize: "14px", padding: "4px" }}>
+          <IconButton
+            color="secondary"
+            sx={{ fontSize: "14px", padding: "4px" }}
+          >
             <ThumbDown sx={{ fontSize: "20px" }} />
           </IconButton>
           <IconButton
             color="info"
             sx={{ fontSize: "14px", padding: "4px" }}
-            onClick={() => translateComment(params.row.id, params.row.main_comment)}
+            onClick={() =>
+              translateComment(params.row.id, params.row.main_comment)
+            }
           >
             <GTranslateOutlined sx={{ fontSize: "20px" }} />
           </IconButton>
-          <IconButton color="error" sx={{ fontSize: "14px", padding: "4px" }} onClick={() => handleDelete(params.row.id)}>
+          <IconButton
+            color="error"
+            sx={{ fontSize: "14px", padding: "4px" }}
+            onClick={() => handleDelete(params.row.id)}
+          >
             <Delete sx={{ fontSize: "20px" }} />
           </IconButton>
         </Box>
       ),
     },
-    
   ];
 
   if (loading) {
@@ -309,7 +303,6 @@ const Dashboard = () => {
           <Button variant="outlined" color="inherit" onClick={handleLogout}>
             Logout
           </Button>
-         
         </Toolbar>
       </AppBar>
 
@@ -323,7 +316,6 @@ const Dashboard = () => {
           paddingX: 4,
         }}
       >
-         
         <Typography variant="h5" sx={{ fontWeight: "bold", color: "#303f9f" }}>
           Comments Overview
         </Typography>
@@ -362,7 +354,6 @@ const Dashboard = () => {
           columns={columns}
           pageSize={10}
           getRowId={(row) => row.id}
-          
           sx={{
             "& .MuiDataGrid-columnHeaders": {
               backgroundColor: "#e0e0e0",
@@ -403,96 +394,145 @@ const Dashboard = () => {
       </Dialog>
 
       {modalData && (
-        <Dialog open={isModalOpen} onClose={closeModal} maxWidth="md" fullWidth>
-          <DialogTitle
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <Typography variant="h6">Comment Thread</Typography>
-            <Button onClick={closeModal} color="primary">
-              Close
-            </Button>
-          </DialogTitle>
-          <DialogContent>
-            {/* Main Comment with User */}
-            <Typography variant="h6" gutterBottom>
-              <strong>{modalData.main_comment_user}</strong>:{" "}
-              {modalData.main_comment}
-            </Typography>
+  <Dialog 
+    open={isModalOpen} 
+    onClose={closeModal} 
+    maxWidth="xs" // Compact size like Instagram post
+    fullWidth
+    sx={{
+      "& .MuiDialog-paper": {
+        borderRadius: "12px",
+        boxShadow: "0px 6px 16px rgba(0, 0, 0, 0.2)",
+        padding: "10px",
+      },
+    }}
+  >
+    {/* Header */}
+    <DialogTitle
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "12px 16px",
+        borderBottom: "1px solid #ddd",
+      }}
+    >
+      <Typography variant="h6" fontWeight="bold">Comment Thread</Typography>
+      <IconButton onClick={closeModal} sx={{ color: "#555" }}>
+        ✖
+      </IconButton>
+    </DialogTitle>
 
-            {/* Video Preview */}
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                width: "100%",
-                aspectRatio: "16/9",
-                backgroundColor: "#000",
-                marginBottom: 2,
+    {/* Content */}
+    <DialogContent sx={{ padding: "16px" }}>
+      {/* Main Comment */}
+      <Box sx={{ marginBottom: "14px" }}>
+        <Typography variant="body1" sx={{ fontSize: "15px", lineHeight: "1.5" }}>
+          <strong>{modalData.main_comment_user}</strong>: {modalData.main_comment}
+        </Typography>
+      </Box>
+
+      {/* Video Preview with 4:5 Instagram Aspect Ratio */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          width: "100%",
+          aspectRatio: "4/5",
+          backgroundColor: "#000",
+          borderRadius: "10px",
+          overflow: "hidden",
+          marginBottom: "16px",
+        }}
+      >
+        {modalData.preview ? (
+          <img
+            src={modalData.preview}
+            alt="Video Preview"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
+          />
+        ) : (
+          <Typography sx={{ color: "#fff", textAlign: "center" }}>
+            Video Preview Not Available
+          </Typography>
+        )}
+      </Box>
+
+      {/* Video URL */}
+      <Box sx={{ marginBottom: "14px" }}>
+        <Typography variant="subtitle2" sx={{ fontSize: "14px", color: "#555" }}>
+          <strong>URL:</strong>{" "}
+          {videoMapping[modalData.video_id] ? (
+            <a
+              href={videoMapping[modalData.video_id]}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: "#303f9f",
+                textDecoration: "none",
+                fontWeight: "bold",
               }}
             >
-              {modalData.preview ? (
-                <img
-                  src={modalData.preview}
-                  alt="Video Preview"
-                  style={{
-                    maxWidth: "100%",
-                    maxHeight: "100%",
-                    objectFit: "contain",
-                  }}
-                />
-              ) : (
-                <Typography sx={{ color: "#fff" }}>
-                  Video Preview Not Available
-                </Typography>
-              )}
-            </Box>
+              {videoMapping[modalData.video_id]}
+            </a>
+          ) : (
+            "URL Not Available"
+          )}
+        </Typography>
+      </Box>
 
-            {/* Video URL */}
-            <Typography variant="subtitle1" gutterBottom>
-              URL:{" "}
-              {videoMapping[modalData.video_id] ? (
-                <a
-                  href={videoMapping[modalData.video_id]}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    color: "#303f9f",
-                    textDecoration: "none",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {videoMapping[modalData.video_id]}
-                </a>
-              ) : (
-                "URL Not Available"
-              )}
-            </Typography>
+      {/* Sentiment/Status */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
+        <Typography
+          variant="body2"
+          sx={{
+            fontSize: "14px",
+            fontWeight: "bold",
+            padding: "6px 12px",
+            borderRadius: "12px",
+            textAlign: "center",
+            backgroundColor:
+              modalData.sentiment_tag === "bad" ? "rgba(211, 47, 47, 0.15)" : "rgba(56, 142, 60, 0.15)",
+            color: modalData.sentiment_tag === "bad" ? "#D32F2F" : "#388E3C",
+          }}
+        >
+          {modalData.sentiment_tag.toUpperCase()}
+        </Typography>
+      </Box>
 
-            {/* Replies */}
-            <Typography variant="subtitle1" gutterBottom>
-              Replies:
-            </Typography>
-            <Box sx={{ paddingLeft: 2 }}>
-              {modalData.replies.length > 0 ? (
-                modalData.replies.map((reply, index) => (
-                  <Typography key={index} variant="body2" gutterBottom>
-                    <strong>{reply.reply_user}</strong>: {reply.reply}
-                  </Typography>
-                ))
-              ) : (
-                <Typography variant="body2" sx={{ fontStyle: "italic" }}>
-                  No replies available.
+      {/* Replies Section - **NOW FILTERED CORRECTLY** */}
+      <Typography variant="subtitle1" sx={{ fontWeight: "bold", fontSize: "14px", marginBottom: "10px" }}>
+        Replies:
+      </Typography>
+      <Box sx={{ paddingLeft: "12px", maxHeight: "200px", overflowY: "auto" }}>
+        {modalData.replies.filter(reply => reply.main_comment_id === modalData.video_id).length > 0 ? (
+          modalData.replies
+            .filter(reply => reply.main_comment_id === modalData.video_id) // ✅ **Fix: Only show replies for this comment**
+            .map((reply, index) => (
+              <Box key={index} sx={{ marginBottom: "12px" }}>
+                <Typography variant="body2" sx={{ fontSize: "13px", fontWeight: "bold", marginBottom: "4px" }}>
+                  {reply.reply_user}
                 </Typography>
-              )}
-            </Box>
-          </DialogContent>
-        </Dialog>
-      )}
+                <Typography variant="body2" sx={{ fontSize: "13px", color: "#333" }}>
+                  {reply.reply}
+                </Typography>
+              </Box>
+            ))
+        ) : (
+          <Typography variant="body2" sx={{ fontStyle: "italic", color: "#777" }}>
+            No replies available.
+          </Typography>
+        )}
+      </Box>
+    </DialogContent>
+  </Dialog>
+)}
+
     </Box>
   );
 };
