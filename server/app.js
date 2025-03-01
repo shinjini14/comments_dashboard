@@ -315,6 +315,7 @@ app.post("/api/translate", async (req, res) => {
 //Approve or reject comments
 
 // Approve (Move to good_comments)
+// Individual Approve (move from comments_api to good_comments)
 app.post("/approve/:id", async (req, res) => {
     const { id } = req.params;
     try {
@@ -332,7 +333,7 @@ app.post("/approve/:id", async (req, res) => {
     }
   });
   
-  // Reject (Move to bad_comments)
+  // Individual Reject (move from comments_api to bad_comments)
   app.post("/reject/:id", async (req, res) => {
     const { id } = req.params;
     try {
@@ -350,7 +351,7 @@ app.post("/approve/:id", async (req, res) => {
     }
   });
   
-  // Undo from good_comments or bad_comments
+  // Undo (restore from good_comments or bad_comments to comments_api)
   app.post("/undo/:id", async (req, res) => {
     const { id } = req.params;
     try {
@@ -360,7 +361,6 @@ app.post("/approve/:id", async (req, res) => {
         )
         INSERT INTO comments_api SELECT * FROM moved;
       `;
-  
       let result = await pool.query(moveBackQuery, [id]);
       if (result.rowCount === 0) {
         moveBackQuery = `
@@ -371,7 +371,6 @@ app.post("/approve/:id", async (req, res) => {
         `;
         await pool.query(moveBackQuery, [id]);
       }
-  
       res.json({ success: true, message: "Comment restored to main dashboard" });
     } catch (error) {
       console.error("Error undoing comment:", error);
@@ -379,10 +378,75 @@ app.post("/approve/:id", async (req, res) => {
     }
   });
   
-  // Get comments by type
+  // Bulk Approve (for multiple IDs)
+  app.post("/bulk/approve", async (req, res) => {
+    const { ids } = req.body; // expects an array of IDs
+    try {
+      const bulkQuery = `
+        WITH moved AS (
+          DELETE FROM comments_api WHERE id = ANY($1) RETURNING *
+        )
+        INSERT INTO good_comments SELECT * FROM moved;
+      `;
+      await pool.query(bulkQuery, [ids]);
+      res.json({ success: true, message: "Bulk approval successful" });
+    } catch (error) {
+      console.error("Error in bulk approval:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
+  // Bulk Reject (for multiple IDs)
+  app.post("/bulk/reject", async (req, res) => {
+    const { ids } = req.body;
+    try {
+      const bulkQuery = `
+        WITH moved AS (
+          DELETE FROM comments_api WHERE id = ANY($1) RETURNING *
+        )
+        INSERT INTO bad_comments SELECT * FROM moved;
+      `;
+      await pool.query(bulkQuery, [ids]);
+      res.json({ success: true, message: "Bulk rejection successful" });
+    } catch (error) {
+      console.error("Error in bulk rejection:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
+  // Bulk Undo (restore multiple comments)
+  app.post("/bulk/undo", async (req, res) => {
+    const { ids } = req.body;
+    try {
+      // Try to restore from good_comments first.
+      const resultGood = await pool.query(`
+        WITH moved AS (
+          DELETE FROM good_comments WHERE id = ANY($1) RETURNING *
+        )
+        INSERT INTO comments_api SELECT * FROM moved;
+      `, [ids]);
+  
+      // For IDs not found in good_comments, try bad_comments.
+      // (A more robust solution would check which IDs failed and then process them.)
+      if (resultGood.rowCount < ids.length) {
+        await pool.query(`
+          WITH moved AS (
+            DELETE FROM bad_comments WHERE id = ANY($1) RETURNING *
+          )
+          INSERT INTO comments_api SELECT * FROM moved;
+        `, [ids]);
+      }
+      res.json({ success: true, message: "Bulk undo successful" });
+    } catch (error) {
+      console.error("Error in bulk undo:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
+  // Get comments by type: type can be "main", "good", or "bad"
   app.get("/comments/:type", async (req, res) => {
     const { type } = req.params;
-    let table = "comments_api"; // Default to main comments
+    let table = "comments_api"; // Default is main
     if (type === "good") table = "good_comments";
     if (type === "bad") table = "bad_comments";
   
@@ -394,6 +458,7 @@ app.post("/approve/:id", async (req, res) => {
       res.status(500).json({ error: "Internal Server Error" });
     }
   });
+  
   
   
 
