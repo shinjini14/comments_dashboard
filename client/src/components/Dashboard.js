@@ -473,7 +473,7 @@ const Dashboard = () => {
       {/* Top Bar */}
       <AppBar position="fixed" sx={{ backgroundColor: "#3949ab" }}>
         <Toolbar>
-          <Typography variant="h5" sx={{ flexGrow: 1, fontWeight: "bold" }}>
+        <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Comments Dashboard
           </Typography>
           <Button
