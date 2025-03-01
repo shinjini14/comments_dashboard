@@ -79,6 +79,34 @@ app.get("/api/comments", async (req, res) => {
       res.status(500).json({ error: "Internal Server Error" });
     }
   });
+
+
+
+  //Tab comments
+  app.get("/api/comments/:tab", async (req, res) => {
+    const { tab } = req.params;
+  
+    let query;
+    if (tab === "all") {
+      query = "SELECT * FROM comments_api"; // All comments
+    } else if (tab === "good") {
+      query = "SELECT * FROM good_comments"; // Approved comments
+    } else if (tab === "bad") {
+      query = "SELECT * FROM bad_comments"; // Rejected comments
+    } else {
+      return res.status(400).json({ error: "Invalid tab type" });
+    }
+  
+    try {
+      const { rows } = await pool.query(query);
+      console.log(`Fetched ${rows.length} rows for tab: ${tab}`);
+      res.json(rows);
+    } catch (error) {
+      console.error("❌ Database Error:", error);
+      res.status(500).json({ error: "Database query failed" });
+    }
+  });
+  
   
 // Video Metadata API
 app.get("/api/videos", async (req, res) => {
@@ -281,6 +309,89 @@ app.post("/api/translate", async (req, res) => {
     } catch (error) {
       console.error("Translation Error:", error);
       res.status(500).json({ error: "Translation failed." });
+    }
+  });
+
+//Approve or reject comments
+
+// Approve (Move to good_comments)
+app.post("/approve/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const moveQuery = `
+        WITH moved AS (
+          DELETE FROM comments_api WHERE id = $1 RETURNING *
+        )
+        INSERT INTO good_comments SELECT * FROM moved;
+      `;
+      await pool.query(moveQuery, [id]);
+      res.json({ success: true, message: "Comment approved" });
+    } catch (error) {
+      console.error("Error approving comment:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
+  // Reject (Move to bad_comments)
+  app.post("/reject/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const moveQuery = `
+        WITH moved AS (
+          DELETE FROM comments_api WHERE id = $1 RETURNING *
+        )
+        INSERT INTO bad_comments SELECT * FROM moved;
+      `;
+      await pool.query(moveQuery, [id]);
+      res.json({ success: true, message: "Comment rejected" });
+    } catch (error) {
+      console.error("Error rejecting comment:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
+  // Undo from good_comments or bad_comments
+  app.post("/undo/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      let moveBackQuery = `
+        WITH moved AS (
+          DELETE FROM good_comments WHERE id = $1 RETURNING *
+        )
+        INSERT INTO comments_api SELECT * FROM moved;
+      `;
+  
+      let result = await pool.query(moveBackQuery, [id]);
+      if (result.rowCount === 0) {
+        moveBackQuery = `
+          WITH moved AS (
+            DELETE FROM bad_comments WHERE id = $1 RETURNING *
+          )
+          INSERT INTO comments_api SELECT * FROM moved;
+        `;
+        await pool.query(moveBackQuery, [id]);
+      }
+  
+      res.json({ success: true, message: "Comment restored to main dashboard" });
+    } catch (error) {
+      console.error("Error undoing comment:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
+  // Get comments by type
+  app.get("/comments/:type", async (req, res) => {
+    const { type } = req.params;
+    let table = "comments_api"; // Default to main comments
+    if (type === "good") table = "good_comments";
+    if (type === "bad") table = "bad_comments";
+  
+    try {
+      const result = await pool.query(`SELECT * FROM ${table} ORDER BY created_at DESC`);
+      res.json(result.rows);
+    } catch (error) {
+      console.error("Error fetching comments:", error);
+      res.status(500).json({ error: "Internal Server Error" });
     }
   });
   
