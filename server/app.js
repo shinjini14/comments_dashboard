@@ -169,8 +169,8 @@ app.get("/comments/:type", async (req, res) => {
             DELETE FROM youtube_comments WHERE comment_id = $1 RETURNING *
           )
           INSERT INTO good_comments (id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag)
-          SELECT comment_id, video_db_id, text, author, time, sentiment_tag
-            FROM moved;
+          SELECT comment_id, video_db_id, text, author, CAST(time AS TIMESTAMP), sentiment_tag
+          FROM moved;
         `;
         await pool.query(moveQuery, [id]);
       } else {
@@ -199,8 +199,8 @@ app.get("/comments/:type", async (req, res) => {
             DELETE FROM youtube_comments WHERE comment_id = $1 RETURNING *
           )
           INSERT INTO bad_comments (id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag)
-          SELECT comment_id, video_db_id, text, author, time, sentiment_tag
-            FROM moved;
+          SELECT comment_id, video_db_id, text, author, CAST(time AS TIMESTAMP), sentiment_tag
+          FROM moved;
         `;
         await pool.query(moveQuery, [id]);
       } else {
@@ -224,14 +224,14 @@ app.get("/comments/:type", async (req, res) => {
     const source = req.query.source === "youtube" ? "youtube" : "default";
     try {
       if (source === "youtube") {
-        // First try to move from good_comments back to youtube_comments
+        // Try moving from good_comments back to youtube_comments
         let query = `
           WITH moved AS (
             DELETE FROM good_comments WHERE id = $1 RETURNING *
           )
           INSERT INTO youtube_comments (comment_id, video_db_id, text, author, time, sentiment_tag)
           SELECT id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag
-            FROM moved;
+          FROM moved;
         `;
         let result = await pool.query(query, [id]);
         if (result.rowCount === 0) {
@@ -242,7 +242,7 @@ app.get("/comments/:type", async (req, res) => {
             )
             INSERT INTO youtube_comments (comment_id, video_db_id, text, author, time, sentiment_tag)
             SELECT id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag
-              FROM moved;
+            FROM moved;
           `;
           await pool.query(query, [id]);
         }
@@ -284,8 +284,8 @@ app.get("/comments/:type", async (req, res) => {
             DELETE FROM youtube_comments WHERE comment_id = ANY($1) RETURNING *
           )
           INSERT INTO good_comments (id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag)
-          SELECT comment_id, video_db_id, text, author, time, sentiment_tag
-            FROM moved;
+          SELECT comment_id, video_db_id, text, author, CAST(time AS TIMESTAMP), sentiment_tag
+          FROM moved;
         `;
         await pool.query(moveQuery, [ids]);
       } else {
@@ -314,8 +314,8 @@ app.get("/comments/:type", async (req, res) => {
             DELETE FROM youtube_comments WHERE comment_id = ANY($1) RETURNING *
           )
           INSERT INTO bad_comments (id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag)
-          SELECT comment_id, video_db_id, text, author, time, sentiment_tag
-            FROM moved;
+          SELECT comment_id, video_db_id, text, author, CAST(time AS TIMESTAMP), sentiment_tag
+          FROM moved;
         `;
         await pool.query(moveQuery, [ids]);
       } else {
@@ -346,7 +346,7 @@ app.get("/comments/:type", async (req, res) => {
           )
           INSERT INTO youtube_comments (comment_id, video_db_id, text, author, time, sentiment_tag)
           SELECT id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag
-            FROM moved;
+          FROM moved;
           `,
           [ids]
         );
@@ -358,7 +358,7 @@ app.get("/comments/:type", async (req, res) => {
             )
             INSERT INTO youtube_comments (comment_id, video_db_id, text, author, time, sentiment_tag)
             SELECT id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag
-              FROM moved;
+            FROM moved;
             `,
             [ids]
           );
@@ -394,8 +394,8 @@ app.get("/comments/:type", async (req, res) => {
   
   // --------------------------------------------------
   // 7) Bulk Delete
-  //    Uses the URL parameter :type ("main", "good", or "bad").
-  //    For YouTube, if type is "main", use youtube_comments; otherwise use the respective target table.
+  //    This endpoint uses the URL parameter :type ("main", "good", or "bad").
+  //    For YouTube: if type is "main", use youtube_comments; otherwise use the respective target table.
   // --------------------------------------------------
   app.post("/comments/:type/bulk-delete", async (req, res) => {
     const { type } = req.params;
@@ -416,6 +416,7 @@ app.get("/comments/:type", async (req, res) => {
       res.status(500).json({ error: "Internal Server Error" });
     }
   });
+  
   
 
 // --------------------------------------------------
