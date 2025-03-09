@@ -159,23 +159,26 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
     const { id } = req.params;
     const source = req.query.source === "youtube" ? "youtube" : "default";
     try {
-      let moveQuery;
       if (source === "youtube") {
-        moveQuery = `
+        // Map YouTube columns to standard columns for good_comments.
+        const moveQuery = `
           WITH moved AS (
             DELETE FROM youtube_comments WHERE comment_id = $1 RETURNING *
           )
-          INSERT INTO good_comments SELECT * FROM moved;
+          INSERT INTO good_comments (id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag)
+          SELECT comment_id, video_db_id, text, author, time, sentiment_tag
+            FROM moved;
         `;
+        await pool.query(moveQuery, [id]);
       } else {
-        moveQuery = `
+        const moveQuery = `
           WITH moved AS (
             DELETE FROM comments_api WHERE id = $1 RETURNING *
           )
           INSERT INTO good_comments SELECT * FROM moved;
         `;
+        await pool.query(moveQuery, [id]);
       }
-      await pool.query(moveQuery, [id]);
       res.json({ success: true, message: "Comment approved" });
     } catch (error) {
       console.error("Error approving comment:", error);
@@ -187,23 +190,25 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
     const { id } = req.params;
     const source = req.query.source === "youtube" ? "youtube" : "default";
     try {
-      let moveQuery;
       if (source === "youtube") {
-        moveQuery = `
+        const moveQuery = `
           WITH moved AS (
             DELETE FROM youtube_comments WHERE comment_id = $1 RETURNING *
           )
-          INSERT INTO bad_comments SELECT * FROM moved;
+          INSERT INTO bad_comments (id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag)
+          SELECT comment_id, video_db_id, text, author, time, sentiment_tag
+            FROM moved;
         `;
+        await pool.query(moveQuery, [id]);
       } else {
-        moveQuery = `
+        const moveQuery = `
           WITH moved AS (
             DELETE FROM comments_api WHERE id = $1 RETURNING *
           )
           INSERT INTO bad_comments SELECT * FROM moved;
         `;
+        await pool.query(moveQuery, [id]);
       }
-      await pool.query(moveQuery, [id]);
       res.json({ success: true, message: "Comment rejected" });
     } catch (error) {
       console.error("Error rejecting comment:", error);
@@ -215,26 +220,31 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
     const { id } = req.params;
     const source = req.query.source === "youtube" ? "youtube" : "default";
     try {
-      let query;
       if (source === "youtube") {
-        query = `
+        // Try to undo from good_comments first.
+        let query = `
           WITH moved AS (
-            DELETE FROM good_comments WHERE comment_id = $1 RETURNING *
+            DELETE FROM good_comments WHERE id = $1 RETURNING *
           )
-          INSERT INTO youtube_comments SELECT * FROM moved;
+          INSERT INTO youtube_comments (comment_id, video_db_id, text, author, time, sentiment_tag)
+          SELECT id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag
+            FROM moved;
         `;
         let result = await pool.query(query, [id]);
         if (result.rowCount === 0) {
+          // If not found, try from bad_comments.
           query = `
             WITH moved AS (
-              DELETE FROM bad_comments WHERE comment_id = $1 RETURNING *
+              DELETE FROM bad_comments WHERE id = $1 RETURNING *
             )
-            INSERT INTO youtube_comments SELECT * FROM moved;
+            INSERT INTO youtube_comments (comment_id, video_db_id, text, author, time, sentiment_tag)
+            SELECT id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag
+              FROM moved;
           `;
           await pool.query(query, [id]);
         }
       } else {
-        query = `
+        let query = `
           WITH moved AS (
             DELETE FROM good_comments WHERE id = $1 RETURNING *
           )
@@ -265,23 +275,25 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
     const { ids } = req.body;
     const source = req.query.source === "youtube" ? "youtube" : "default";
     try {
-      let moveQuery;
       if (source === "youtube") {
-        moveQuery = `
+        const moveQuery = `
           WITH moved AS (
             DELETE FROM youtube_comments WHERE comment_id = ANY($1) RETURNING *
           )
-          INSERT INTO good_comments SELECT * FROM moved;
+          INSERT INTO good_comments (id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag)
+          SELECT comment_id, video_db_id, text, author, time, sentiment_tag
+            FROM moved;
         `;
+        await pool.query(moveQuery, [ids]);
       } else {
-        moveQuery = `
+        const moveQuery = `
           WITH moved AS (
             DELETE FROM comments_api WHERE id = ANY($1) RETURNING *
           )
           INSERT INTO good_comments SELECT * FROM moved;
         `;
+        await pool.query(moveQuery, [ids]);
       }
-      await pool.query(moveQuery, [ids]);
       res.json({ success: true, message: "Bulk approval successful" });
     } catch (error) {
       console.error("Error in bulk approval:", error);
@@ -293,23 +305,25 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
     const { ids } = req.body;
     const source = req.query.source === "youtube" ? "youtube" : "default";
     try {
-      let moveQuery;
       if (source === "youtube") {
-        moveQuery = `
+        const moveQuery = `
           WITH moved AS (
             DELETE FROM youtube_comments WHERE comment_id = ANY($1) RETURNING *
           )
-          INSERT INTO bad_comments SELECT * FROM moved;
+          INSERT INTO bad_comments (id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag)
+          SELECT comment_id, video_db_id, text, author, time, sentiment_tag
+            FROM moved;
         `;
+        await pool.query(moveQuery, [ids]);
       } else {
-        moveQuery = `
+        const moveQuery = `
           WITH moved AS (
             DELETE FROM comments_api WHERE id = ANY($1) RETURNING *
           )
           INSERT INTO bad_comments SELECT * FROM moved;
         `;
+        await pool.query(moveQuery, [ids]);
       }
-      await pool.query(moveQuery, [ids]);
       res.json({ success: true, message: "Bulk rejection successful" });
     } catch (error) {
       console.error("Error in bulk rejection:", error);
@@ -321,36 +335,43 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
     const { ids } = req.body;
     const source = req.query.source === "youtube" ? "youtube" : "default";
     try {
-      let resultGood;
       if (source === "youtube") {
-        resultGood = await pool.query(`
-          WITH moved AS (
-            DELETE FROM good_comments WHERE comment_id = ANY($1) RETURNING *
-          )
-          INSERT INTO youtube_comments SELECT * FROM moved;
-        `, [ids]);
+        let resultGood = await pool.query(
+          `WITH moved AS (
+             DELETE FROM good_comments WHERE id = ANY($1) RETURNING *
+           )
+           INSERT INTO youtube_comments (comment_id, video_db_id, text, author, time, sentiment_tag)
+           SELECT id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag
+             FROM moved;`,
+          [ids]
+        );
         if (resultGood.rowCount < ids.length) {
-          await pool.query(`
-            WITH moved AS (
-              DELETE FROM bad_comments WHERE comment_id = ANY($1) RETURNING *
-            )
-            INSERT INTO youtube_comments SELECT * FROM moved;
-          `, [ids]);
+          await pool.query(
+            `WITH moved AS (
+               DELETE FROM bad_comments WHERE id = ANY($1) RETURNING *
+             )
+             INSERT INTO youtube_comments (comment_id, video_db_id, text, author, time, sentiment_tag)
+             SELECT id, video_id, main_comment, main_comment_user, updated_at, sentiment_tag
+               FROM moved;`,
+            [ids]
+          );
         }
       } else {
-        resultGood = await pool.query(`
-          WITH moved AS (
-            DELETE FROM good_comments WHERE id = ANY($1) RETURNING *
-          )
-          INSERT INTO comments_api SELECT * FROM moved;
-        `, [ids]);
+        let resultGood = await pool.query(
+          `WITH moved AS (
+             DELETE FROM good_comments WHERE id = ANY($1) RETURNING *
+           )
+           INSERT INTO comments_api SELECT * FROM moved;`,
+          [ids]
+        );
         if (resultGood.rowCount < ids.length) {
-          await pool.query(`
-            WITH moved AS (
-              DELETE FROM bad_comments WHERE id = ANY($1) RETURNING *
-            )
-            INSERT INTO comments_api SELECT * FROM moved;
-          `, [ids]);
+          await pool.query(
+            `WITH moved AS (
+               DELETE FROM bad_comments WHERE id = ANY($1) RETURNING *
+             )
+             INSERT INTO comments_api SELECT * FROM moved;`,
+            [ids]
+          );
         }
       }
       res.json({ success: true, message: "Bulk undo successful" });
@@ -364,14 +385,12 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
   // 7) Bulk Delete
   // --------------------------------------------------
   app.post("/comments/:type/bulk-delete", async (req, res) => {
-    const { type } = req.params;
+    const { type } = req.params; // "main", "good", or "bad"
     const { ids } = req.body;
     const source = req.query.source === "youtube" ? "youtube" : "default";
     let table;
     if (source === "youtube") {
       table = "youtube_comments";
-      if (type === "good") table = "good_comments";
-      if (type === "bad") table = "bad_comments";
     } else {
       table = "comments_api";
       if (type === "good") table = "good_comments";
