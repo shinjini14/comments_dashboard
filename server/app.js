@@ -53,8 +53,8 @@ app.get("/comments/:type", async (req, res) => {
     const source = req.query.source === "youtube" ? "youtube" : "default";
     try {
       if (source === "youtube") {
-        // For YouTube comments, join with statistics_youtube_api to get updated_at
-        const result = await pool.query(`
+        // For YouTube comments, join with statistics_youtube_api
+        let result = await pool.query(`
           SELECT c.*, s.updated_at
           FROM youtube_comments c
           LEFT JOIN statistics_youtube_api s
@@ -62,15 +62,15 @@ app.get("/comments/:type", async (req, res) => {
           ORDER BY (c.sentiment_tag = 'bad') DESC, s.updated_at DESC
         `);
         let rows = result.rows;
-        // Filter by type if needed
         if (type === "good") {
-          rows = rows.filter((row) => row.sentiment_tag !== "bad");
+          rows = rows.filter(row => row.sentiment_tag !== "bad");
         } else if (type === "bad") {
-          rows = rows.filter((row) => row.sentiment_tag === "bad");
+          rows = rows.filter(row => row.sentiment_tag === "bad");
         }
+        // For "main", return all rows.
         res.json(rows);
       } else {
-        // For standard comments, use the appropriate table.
+        // For standard comments
         let table = "comments_api";
         if (type === "good") table = "good_comments";
         if (type === "bad") table = "bad_comments";
@@ -362,8 +362,6 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
   
   // --------------------------------------------------
   // 7) Bulk Delete
-  //    This endpoint accepts a URL parameter :type ("main", "good", or "bad")
-  //    If ?source=youtube is passed, main uses youtube_comments.
   // --------------------------------------------------
   app.post("/comments/:type/bulk-delete", async (req, res) => {
     const { type } = req.params;
@@ -380,7 +378,6 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
       if (type === "bad") table = "bad_comments";
     }
     try {
-      // Use "comment_id" for YouTube and "id" for standard.
       const key = source === "youtube" ? "comment_id" : "id";
       await pool.query(`DELETE FROM ${table} WHERE ${key} = ANY($1)`, [ids]);
       res.json({ success: true, message: "Bulk delete successful" });
