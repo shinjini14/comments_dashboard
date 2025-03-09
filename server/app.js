@@ -112,7 +112,7 @@ app.get("/comments/:type", async (req, res) => {
       let commentsQuery, statsQuery;
       if (source === "youtube") {
         commentsQuery = `
-          SELECT text AS main_comment, author AS main_comment_user, reply_user, reply
+          SELECT text AS main_comment, author AS main_comment_user
             FROM youtube_comments
            WHERE video_db_id = $1
         `;
