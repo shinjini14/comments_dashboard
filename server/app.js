@@ -51,51 +51,44 @@ app.post("/api/auth/login", async (req, res) => {
 app.get("/comments/:type", async (req, res) => {
     const { type } = req.params;
     const source = req.query.source === "youtube" ? "youtube" : "default";
-    let query = "";
-    if (source === "youtube") {
-      if (type === "main") {
-        // Use a join to fetch updated_at from statistics_youtube_api
-        query = `
+    try {
+      if (source === "youtube") {
+        // For YouTube comments, join with statistics_youtube_api to get the updated_at field.
+        const result = await pool.query(`
           SELECT c.*, s.updated_at
           FROM youtube_comments c
           LEFT JOIN statistics_youtube_api s
             ON CAST(c.video_db_id AS VARCHAR(50)) = s.video_id
-          ORDER BY (sentiment_tag = 'bad') DESC, s.updated_at DESC
-        `;
-      } else if (type === "good") {
-        // Assuming good_comments for YouTube rows include a source marker (or you may simply return all rows)
-        query = `
-          SELECT * FROM good_comments
-          WHERE source = 'youtube'
-          ORDER BY (sentiment_tag = 'bad') DESC, time DESC
-        `;
-      } else if (type === "bad") {
-        query = `
-          SELECT * FROM bad_comments
-          WHERE source = 'youtube'
-          ORDER BY (sentiment_tag = 'bad') DESC, time DESC
-        `;
+          ORDER BY (c.sentiment_tag = 'bad') DESC, s.updated_at DESC
+        `);
+        let rows = result.rows;
+        // If type is "good", only return rows with sentiment_tag not equal to 'bad'
+        if (type === "good") {
+          rows = rows.filter((row) => row.sentiment_tag !== "bad");
+        }
+        // If type is "bad", return only rows with sentiment_tag equal to 'bad'
+        if (type === "bad") {
+          rows = rows.filter((row) => row.sentiment_tag === "bad");
+        }
+        // For type "main" return all rows
+        res.json(rows);
+      } else {
+        // For standard comments, select from the appropriate table.
+        let table = "comments_api";
+        if (type === "good") table = "good_comments";
+        if (type === "bad") table = "bad_comments";
+        const result = await pool.query(`
+          SELECT * FROM ${table}
+          ORDER BY (sentiment_tag = 'bad') DESC, updated_at DESC
+        `);
+        res.json(result.rows);
       }
-    } else {
-      // Default (standard comments)
-      let table = "comments_api";
-      if (type === "good") table = "good_comments";
-      if (type === "bad") table = "bad_comments";
-      query = `
-        SELECT * FROM ${table}
-        ORDER BY (sentiment_tag = 'bad') DESC, updated_at DESC
-      `;
-    }
-    try {
-      const result = await pool.query(query);
-      res.json(result.rows);
     } catch (error) {
       console.error("Error fetching comments:", error);
       res.status(500).json({ error: "Internal Server Error" });
     }
   });
   
-
 // --------------------------------------------------
 // 3) Get Videos
 // --------------------------------------------------
