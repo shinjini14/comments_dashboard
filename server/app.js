@@ -53,7 +53,7 @@ app.get("/comments/:type", async (req, res) => {
     const source = req.query.source === "youtube" ? "youtube" : "default";
     try {
       if (source === "youtube") {
-        // For YouTube comments, join with statistics_youtube_api to get the updated_at field.
+        // For YouTube comments, join with statistics_youtube_api to get updated_at
         const result = await pool.query(`
           SELECT c.*, s.updated_at
           FROM youtube_comments c
@@ -62,18 +62,15 @@ app.get("/comments/:type", async (req, res) => {
           ORDER BY (c.sentiment_tag = 'bad') DESC, s.updated_at DESC
         `);
         let rows = result.rows;
-        // If type is "good", only return rows with sentiment_tag not equal to 'bad'
+        // Filter by type if needed
         if (type === "good") {
           rows = rows.filter((row) => row.sentiment_tag !== "bad");
-        }
-        // If type is "bad", return only rows with sentiment_tag equal to 'bad'
-        if (type === "bad") {
+        } else if (type === "bad") {
           rows = rows.filter((row) => row.sentiment_tag === "bad");
         }
-        // For type "main" return all rows
         res.json(rows);
       } else {
-        // For standard comments, select from the appropriate table.
+        // For standard comments, use the appropriate table.
         let table = "comments_api";
         if (type === "good") table = "good_comments";
         if (type === "bad") table = "bad_comments";
@@ -111,6 +108,7 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
     try {
       let commentsQuery, statsQuery;
       if (source === "youtube") {
+        // For YouTube, assume comment text is in "text" and author in "author"
         commentsQuery = `
           SELECT text AS main_comment, author AS main_comment_user
           FROM youtube_comments
@@ -140,11 +138,8 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
       const { rows: vid } = await pool.query(statsQuery, [video_id]);
       const mainComment = comments[0];
       const replies = comments
-        .filter((c) => c.reply_user && c.reply)
-        .map((c) => ({
-          reply_user: c.reply_user,
-          reply: c.reply,
-        }));
+        .filter(c => c.reply_user && c.reply)
+        .map(c => ({ reply_user: c.reply_user, reply: c.reply }));
       res.json({
         main_comment: mainComment.main_comment,
         main_comment_user: mainComment.main_comment_user,
@@ -157,10 +152,9 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
     }
   });
   
-  //
-  // 5) APPROVE/REJECT/UNDO SINGLE
-  //    For YouTube rows, use the key "comment_id" and append ?source=youtube to the API call.
-  //
+  // --------------------------------------------------
+  // 5) Approve/Reject/Undo Single
+  // --------------------------------------------------
   app.post("/approve/:id", async (req, res) => {
     const { id } = req.params;
     const source = req.query.source === "youtube" ? "youtube" : "default";
@@ -264,9 +258,9 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
     }
   });
   
-  //
-  // 6) BULK ACTIONS: APPROVE / REJECT / UNDO
-  //
+  // --------------------------------------------------
+  // 6) Bulk Actions: Approve / Reject / Undo
+  // --------------------------------------------------
   app.post("/bulk/approve", async (req, res) => {
     const { ids } = req.body;
     const source = req.query.source === "youtube" ? "youtube" : "default";
@@ -366,10 +360,11 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
     }
   });
   
-  //
-  // 7) BULK DELETE – uses a URL parameter :type ("main", "good", or "bad")
-  //     If ?source=youtube is passed, main uses youtube_comments.
-  //
+  // --------------------------------------------------
+  // 7) Bulk Delete
+  //    This endpoint accepts a URL parameter :type ("main", "good", or "bad")
+  //    If ?source=youtube is passed, main uses youtube_comments.
+  // --------------------------------------------------
   app.post("/comments/:type/bulk-delete", async (req, res) => {
     const { type } = req.params;
     const { ids } = req.body;
@@ -385,7 +380,7 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
       if (type === "bad") table = "bad_comments";
     }
     try {
-      // Use "comment_id" for YouTube and "id" for standard comments.
+      // Use "comment_id" for YouTube and "id" for standard.
       const key = source === "youtube" ? "comment_id" : "id";
       await pool.query(`DELETE FROM ${table} WHERE ${key} = ANY($1)`, [ids]);
       res.json({ success: true, message: "Bulk delete successful" });
@@ -394,6 +389,7 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
       res.status(500).json({ error: "Internal Server Error" });
     }
   });
+  
   
 
 // --------------------------------------------------
