@@ -49,23 +49,31 @@ app.post("/api/auth/login", async (req, res) => {
 //    (Main => comments_api, Good => good_comments, Bad => bad_comments)
 // --------------------------------------------------
 app.get("/comments/:type", async (req, res) => {
-  const { type } = req.params;
-  let table = "comments_api"; // default
-  if (type === "good") table = "good_comments";
-  if (type === "bad") table = "bad_comments";
-
-  try {
-    // Order by "bad" first, then by updated_at desc
-    const result = await pool.query(`
-      SELECT * FROM ${table} 
-      ORDER BY (sentiment_tag = 'bad') DESC, updated_at DESC
-    `);
-    res.json(result.rows);
-  } catch (error) {
-    console.error("Error fetching comments:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
+    const { type } = req.params;
+    const source = req.query.source === "youtube" ? "youtube" : "default";
+    let table;
+    if (source === "youtube") {
+      table = "youtube_comments"; // main YouTube comments
+    } else {
+      table = "comments_api"; // standard comments
+    }
+    if (type === "good") table = "good_comments";
+    if (type === "bad") table = "bad_comments";
+    
+    try {
+      // For standard comments, order by updated_at descending.
+      // For YouTube comments, assume a column "time" holds the timestamp.
+      const orderClause = source === "youtube" ? "time DESC" : "updated_at DESC";
+      const result = await pool.query(`
+        SELECT * FROM ${table}
+        ORDER BY (sentiment_tag = 'bad') DESC, ${orderClause}
+      `);
+      res.json(result.rows);
+    } catch (error) {
+      console.error("Error fetching comments:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
 
 // --------------------------------------------------
 // 3) Get Videos
@@ -84,190 +92,299 @@ app.get("/api/videos", async (req, res) => {
 // 4) Get Comment Details for a Given Video ID
 // --------------------------------------------------
 app.get("/api/comments/:video_id/details", async (req, res) => {
-  const { video_id } = req.params;
-  try {
-    // Example: fetch from comments_api & statistics
-    const { rows: comments } = await pool.query(
-      `SELECT main_comment, main_comment_user, reply_user, reply 
-         FROM comments_api 
-         WHERE video_id = $1`,
-      [video_id]
-    );
-    const { rows: vid } = await pool.query(
-      "SELECT preview FROM statistics WHERE video_id = $1",
-      [video_id]
-    );
-
-    if (comments.length === 0) {
-      return res.status(404).json({ error: "No comments found for the video_id" });
+    const { video_id } = req.params;
+    const source = req.query.source === "youtube" ? "youtube" : "default";
+    try {
+      let commentsQuery, statsQuery;
+      if (source === "youtube") {
+        // For YouTube, assume comment text is in "text" and author in "author"
+        commentsQuery = `
+          SELECT text AS main_comment, author AS main_comment_user FROM youtube_comments
+          WHERE video_db_id = $1
+        `;
+        statsQuery = `
+          SELECT preview
+          FROM statistics_youtube_api
+          WHERE video_id = $1
+        `;
+      } else {
+        commentsQuery = `
+          SELECT main_comment, main_comment_user, reply_user, reply
+          FROM comments_api
+          WHERE video_id = $1
+        `;
+        statsQuery = `
+          SELECT preview
+          FROM statistics
+          WHERE video_id = $1
+        `;
+      }
+      const { rows: comments } = await pool.query(commentsQuery, [video_id]);
+      if (comments.length === 0) {
+        return res.status(404).json({ error: "No comments found for the video_id" });
+      }
+      const { rows: vid } = await pool.query(statsQuery, [video_id]);
+      const mainComment = comments[0];
+      const replies = comments
+        .filter(c => c.reply_user && c.reply)
+        .map(c => ({
+          reply_user: c.reply_user,
+          reply: c.reply,
+        }));
+      res.json({
+        main_comment: mainComment.main_comment,
+        main_comment_user: mainComment.main_comment_user,
+        preview: vid.length > 0 ? vid[0].preview : null,
+        replies,
+      });
+    } catch (error) {
+      console.error("Error fetching comment details:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
-
-    const mainComment = comments[0];
-    const replies = comments
-      .filter((c) => c.reply_user && c.reply)
-      .map((c) => ({
-        reply_user: c.reply_user,
-        reply: c.reply,
-      }));
-
-    res.json({
-      main_comment: mainComment.main_comment,
-      main_comment_user: mainComment.main_comment_user,
-      preview: vid.length > 0 ? vid[0].preview : null,
-      replies,
-    });
-  } catch (error) {
-    console.error("Error fetching comment details:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+  });
 
 // --------------------------------------------------
 // 5) Approve/Reject/Undo Single
 // --------------------------------------------------
 // Move from comments_api -> good_comments
 app.post("/approve/:id", async (req, res) => {
-  const { id } = req.params;
-  try {
-    const moveQuery = `
-      WITH moved AS (
-        DELETE FROM comments_api WHERE id = $1 RETURNING *
-      )
-      INSERT INTO good_comments SELECT * FROM moved;
-    `;
-    await pool.query(moveQuery, [id]);
-    res.json({ success: true, message: "Comment approved" });
-  } catch (error) {
-    console.error("Error approving comment:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
+    const { id } = req.params;
+    const source = req.query.source === "youtube" ? "youtube" : "default";
+    try {
+      let moveQuery;
+      if (source === "youtube") {
+        moveQuery = `
+          WITH moved AS (
+            DELETE FROM youtube_comments WHERE comment_id = $1 RETURNING *
+          )
+          INSERT INTO good_comments SELECT * FROM moved;
+        `;
+      } else {
+        moveQuery = `
+          WITH moved AS (
+            DELETE FROM comments_api WHERE id = $1 RETURNING *
+          )
+          INSERT INTO good_comments SELECT * FROM moved;
+        `;
+      }
+      await pool.query(moveQuery, [id]);
+      res.json({ success: true, message: "Comment approved" });
+    } catch (error) {
+      console.error("Error approving comment:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
 
-// Move from comments_api -> bad_comments
+// Reject Single
 app.post("/reject/:id", async (req, res) => {
-  const { id } = req.params;
-  try {
-    const moveQuery = `
-      WITH moved AS (
-        DELETE FROM comments_api WHERE id = $1 RETURNING *
-      )
-      INSERT INTO bad_comments SELECT * FROM moved;
-    `;
-    await pool.query(moveQuery, [id]);
-    res.json({ success: true, message: "Comment rejected" });
-  } catch (error) {
-    console.error("Error rejecting comment:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-// Move from good_comments or bad_comments -> comments_api
-app.post("/undo/:id", async (req, res) => {
-  const { id } = req.params;
-  try {
-    let query = `
-      WITH moved AS (
-        DELETE FROM good_comments WHERE id = $1 RETURNING *
-      )
-      INSERT INTO comments_api SELECT * FROM moved;
-    `;
-    let result = await pool.query(query, [id]);
-    if (result.rowCount === 0) {
-      query = `
-        WITH moved AS (
-          DELETE FROM bad_comments WHERE id = $1 RETURNING *
-        )
-        INSERT INTO comments_api SELECT * FROM moved;
-      `;
-      await pool.query(query, [id]);
+    const { id } = req.params;
+    const source = req.query.source === "youtube" ? "youtube" : "default";
+    try {
+      let moveQuery;
+      if (source === "youtube") {
+        moveQuery = `
+          WITH moved AS (
+            DELETE FROM youtube_comments WHERE comment_id = $1 RETURNING *
+          )
+          INSERT INTO bad_comments SELECT * FROM moved;
+        `;
+      } else {
+        moveQuery = `
+          WITH moved AS (
+            DELETE FROM comments_api WHERE id = $1 RETURNING *
+          )
+          INSERT INTO bad_comments SELECT * FROM moved;
+        `;
+      }
+      await pool.query(moveQuery, [id]);
+      res.json({ success: true, message: "Comment rejected" });
+    } catch (error) {
+      console.error("Error rejecting comment:", error);
+      res.status(500).json({ error: "Internal Server Error" });
     }
-    res.json({ success: true, message: "Comment restored to main dashboard" });
-  } catch (error) {
-    console.error("Error undoing comment:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-// --------------------------------------------------
-// 6) Bulk Approve/Reject/Undo
-// --------------------------------------------------
-app.post("/bulk/approve", async (req, res) => {
-  const { ids } = req.body;
-  try {
-    const moveQuery = `
-      WITH moved AS (
-        DELETE FROM comments_api WHERE id = ANY($1) RETURNING *
-      )
-      INSERT INTO good_comments SELECT * FROM moved;
-    `;
-    await pool.query(moveQuery, [ids]);
-    res.json({ success: true, message: "Bulk approval successful" });
-  } catch (error) {
-    console.error("Error in bulk approval:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-app.post("/bulk/reject", async (req, res) => {
-  const { ids } = req.body;
-  try {
-    const moveQuery = `
-      WITH moved AS (
-        DELETE FROM comments_api WHERE id = ANY($1) RETURNING *
-      )
-      INSERT INTO bad_comments SELECT * FROM moved;
-    `;
-    await pool.query(moveQuery, [ids]);
-    res.json({ success: true, message: "Bulk rejection successful" });
-  } catch (error) {
-    console.error("Error in bulk rejection:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-app.post("/bulk/undo", async (req, res) => {
-  const { ids } = req.body;
-  try {
-    const resultGood = await pool.query(`
-      WITH moved AS (
-        DELETE FROM good_comments WHERE id = ANY($1) RETURNING *
-      )
-      INSERT INTO comments_api SELECT * FROM moved;
-    `, [ids]);
-
-    if (resultGood.rowCount < ids.length) {
-      await pool.query(`
-        WITH moved AS (
-          DELETE FROM bad_comments WHERE id = ANY($1) RETURNING *
-        )
-        INSERT INTO comments_api SELECT * FROM moved;
-      `, [ids]);
+  });
+  
+  // Undo Single
+  app.post("/undo/:id", async (req, res) => {
+    const { id } = req.params;
+    const source = req.query.source === "youtube" ? "youtube" : "default";
+    try {
+      let query;
+      if (source === "youtube") {
+        query = `
+          WITH moved AS (
+            DELETE FROM good_comments WHERE comment_id = $1 RETURNING *
+          )
+          INSERT INTO youtube_comments SELECT * FROM moved;
+        `;
+        let result = await pool.query(query, [id]);
+        if (result.rowCount === 0) {
+          query = `
+            WITH moved AS (
+              DELETE FROM bad_comments WHERE comment_id = $1 RETURNING *
+            )
+            INSERT INTO youtube_comments SELECT * FROM moved;
+          `;
+          await pool.query(query, [id]);
+        }
+      } else {
+        query = `
+          WITH moved AS (
+            DELETE FROM good_comments WHERE id = $1 RETURNING *
+          )
+          INSERT INTO comments_api SELECT * FROM moved;
+        `;
+        let result = await pool.query(query, [id]);
+        if (result.rowCount === 0) {
+          query = `
+            WITH moved AS (
+              DELETE FROM bad_comments WHERE id = $1 RETURNING *
+            )
+            INSERT INTO comments_api SELECT * FROM moved;
+          `;
+          await pool.query(query, [id]);
+        }
+      }
+      res.json({ success: true, message: "Comment restored to main dashboard" });
+    } catch (error) {
+      console.error("Error undoing comment:", error);
+      res.status(500).json({ error: "Internal Server Error" });
     }
-    res.json({ success: true, message: "Bulk undo successful" });
-  } catch (error) {
-    console.error("Error in bulk undo:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-// --------------------------------------------------
-// 7) Bulk Delete (from main/good/bad)
-// --------------------------------------------------
-app.post("/comments/:type/bulk-delete", async (req, res) => {
-  const { type } = req.params;
-  const { ids } = req.body;
-  let table = "comments_api";
-  if (type === "good") table = "good_comments";
-  if (type === "bad") table = "bad_comments";
-
-  try {
-    await pool.query(`DELETE FROM ${table} WHERE id = ANY($1)`, [ids]);
-    res.json({ success: true, message: "Bulk delete successful" });
-  } catch (error) {
-    console.error("Error in bulk delete:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
+  });
+  
+  /* ------------------------------------------------------------------
+     6) BULK ACTIONS: APPROVE / REJECT / UNDO
+  ------------------------------------------------------------------ */
+  app.post("/bulk/approve", async (req, res) => {
+    const { ids } = req.body;
+    const source = req.query.source === "youtube" ? "youtube" : "default";
+    try {
+      let moveQuery;
+      if (source === "youtube") {
+        moveQuery = `
+          WITH moved AS (
+            DELETE FROM youtube_comments WHERE comment_id = ANY($1) RETURNING *
+          )
+          INSERT INTO good_comments SELECT * FROM moved;
+        `;
+      } else {
+        moveQuery = `
+          WITH moved AS (
+            DELETE FROM comments_api WHERE id = ANY($1) RETURNING *
+          )
+          INSERT INTO good_comments SELECT * FROM moved;
+        `;
+      }
+      await pool.query(moveQuery, [ids]);
+      res.json({ success: true, message: "Bulk approval successful" });
+    } catch (error) {
+      console.error("Error in bulk approval:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
+  app.post("/bulk/reject", async (req, res) => {
+    const { ids } = req.body;
+    const source = req.query.source === "youtube" ? "youtube" : "default";
+    try {
+      let moveQuery;
+      if (source === "youtube") {
+        moveQuery = `
+          WITH moved AS (
+            DELETE FROM youtube_comments WHERE comment_id = ANY($1) RETURNING *
+          )
+          INSERT INTO bad_comments SELECT * FROM moved;
+        `;
+      } else {
+        moveQuery = `
+          WITH moved AS (
+            DELETE FROM comments_api WHERE id = ANY($1) RETURNING *
+          )
+          INSERT INTO bad_comments SELECT * FROM moved;
+        `;
+      }
+      await pool.query(moveQuery, [ids]);
+      res.json({ success: true, message: "Bulk rejection successful" });
+    } catch (error) {
+      console.error("Error in bulk rejection:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
+  app.post("/bulk/undo", async (req, res) => {
+    const { ids } = req.body;
+    const source = req.query.source === "youtube" ? "youtube" : "default";
+    try {
+      let resultGood;
+      if (source === "youtube") {
+        resultGood = await pool.query(`
+          WITH moved AS (
+            DELETE FROM good_comments WHERE comment_id = ANY($1) RETURNING *
+          )
+          INSERT INTO youtube_comments SELECT * FROM moved;
+        `, [ids]);
+        if (resultGood.rowCount < ids.length) {
+          await pool.query(`
+            WITH moved AS (
+              DELETE FROM bad_comments WHERE comment_id = ANY($1) RETURNING *
+            )
+            INSERT INTO youtube_comments SELECT * FROM moved;
+          `, [ids]);
+        }
+      } else {
+        resultGood = await pool.query(`
+          WITH moved AS (
+            DELETE FROM good_comments WHERE id = ANY($1) RETURNING *
+          )
+          INSERT INTO comments_api SELECT * FROM moved;
+        `, [ids]);
+        if (resultGood.rowCount < ids.length) {
+          await pool.query(`
+            WITH moved AS (
+              DELETE FROM bad_comments WHERE id = ANY($1) RETURNING *
+            )
+            INSERT INTO comments_api SELECT * FROM moved;
+          `, [ids]);
+        }
+      }
+      res.json({ success: true, message: "Bulk undo successful" });
+    } catch (error) {
+      console.error("Error in bulk undo:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
+  /* ------------------------------------------------------------------
+     7) BULK DELETE
+     This endpoint accepts a URL parameter :type ("main", "good", or "bad")
+     and deletes from the appropriate table.
+     An optional ?source=youtube indicates to use youtube_comments for main.
+  ------------------------------------------------------------------ */
+  app.post("/comments/:type/bulk-delete", async (req, res) => {
+    const { type } = req.params;
+    const { ids } = req.body;
+    const source = req.query.source === "youtube" ? "youtube" : "default";
+    let table;
+    if (source === "youtube") {
+      table = "youtube_comments";
+      if (type === "good") table = "good_comments";
+      if (type === "bad") table = "bad_comments";
+    } else {
+      table = "comments_api";
+      if (type === "good") table = "good_comments";
+      if (type === "bad") table = "bad_comments";
+    }
+    try {
+      // Use the appropriate key: "comment_id" for YouTube and "id" for default.
+      const key = source === "youtube" ? "comment_id" : "id";
+      await pool.query(`DELETE FROM ${table} WHERE ${key} = ANY($1)`, [ids]);
+      res.json({ success: true, message: "Bulk delete successful" });
+    } catch (error) {
+      console.error("Error in bulk delete:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
 
 // --------------------------------------------------
 // 8) Translate API
