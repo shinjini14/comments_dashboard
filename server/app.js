@@ -403,9 +403,8 @@ app.get("/comments/:type", async (req, res) => {
   // 6) Bulk Actions: Approve / Reject / Undo
   // --------------------------------------------------
   app.post("/bulk/approve", async (req, res) => {
-    const { ids } = req.body; // array of IDs or comment_ids
+    const { ids } = req.body;
     const source = req.query.source === "youtube" ? "youtube" : "default";
-  
     try {
       let moveQuery;
       if (source === "youtube") {
@@ -413,7 +412,7 @@ app.get("/comments/:type", async (req, res) => {
         moveQuery = `
           WITH moved AS (
             DELETE FROM youtube_comments
-            WHERE comment_id::text = ANY($1)
+            WHERE comment_id::text = ANY($1::text[])
             RETURNING *
           )
           INSERT INTO youtube_good
@@ -432,8 +431,10 @@ app.get("/comments/:type", async (req, res) => {
         `;
       }
   
-      // Make sure your "ids" are cast to string if YouTube:
+      // Force them to strings in Node
       const finalIds = source === "youtube" ? ids.map(String) : ids;
+  
+      // Now pass finalIds, and in the query, we do ANY($1::text[])
       await pool.query(moveQuery, [finalIds]);
   
       res.json({ success: true, message: "Bulk approval successful" });
@@ -442,6 +443,7 @@ app.get("/comments/:type", async (req, res) => {
       res.status(500).json({ error: "Internal Server Error" });
     }
   });
+  
   
   app.post("/bulk/reject", async (req, res) => {
     const { ids } = req.body;
