@@ -294,34 +294,36 @@ app.get("/comments/:type", async (req, res) => {
   //    For YouTube: Map columns from youtube_comments (using comment_id, video_db_id, text, author, time)
   //    For standard: use existing logic.
   // --------------------------------------------------
-  app.post("/approve/:id", async (req, res) => {
-    const { id } = req.params;
+  app.post("/bulk/approve", async (req, res) => {
+    const { ids } = req.body; // expect an array of IDs (strings for YouTube)
     const source = req.query.source === "youtube" ? "youtube" : "default";
     try {
       let moveQuery;
       if (source === "youtube") {
-        // For YouTube, delete from youtube_comments and insert into youtube_good.
         moveQuery = `
           WITH moved AS (
-            DELETE FROM youtube_comments WHERE comment_id::text = $1 RETURNING *
+            DELETE FROM youtube_comments WHERE comment_id::text = ANY($1::text[]) RETURNING *
           )
           INSERT INTO youtube_good SELECT * FROM moved;
         `;
       } else {
         moveQuery = `
           WITH moved AS (
-            DELETE FROM comments_api WHERE id = $1 RETURNING *
+            DELETE FROM comments_api WHERE id = ANY($1) RETURNING *
           )
           INSERT INTO good_comments SELECT * FROM moved;
         `;
       }
-      await pool.query(moveQuery, [id]);
-      res.json({ success: true, message: "Comment approved" });
+      // Convert all ids to strings to be safe
+      const stringIds = ids.map(String);
+      await pool.query(moveQuery, [stringIds]);
+      res.json({ success: true, message: "Bulk approval successful" });
     } catch (error) {
-      console.error("Error approving comment:", error);
+      console.error("Error in bulk approval:", error);
       res.status(500).json({ error: "Internal Server Error" });
     }
   });
+  
   
   app.post("/reject/:id", async (req, res) => {
     const { id } = req.params;
