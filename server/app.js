@@ -14,6 +14,8 @@ const translate = new Translate({ credentials });
 const app = express();
 const PORT = 5000;
 
+const BATCH_SIZE = 500; // Process in smaller batches
+
 app.use(express.json());
 app.use(cors());
 
@@ -44,6 +46,137 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
+
+// Function to retry sentiment API request in case of failure
+const fetchSentimentWithRetry = async (payload, retries = 3) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await axios.post(
+          "http://34.66.186.236/api/v0/get_comments_prediction",
+          payload
+        );
+        if (response.data.success) return response.data.comments; // If API succeeds, return results
+        console.warn(
+          "⚠️ Sentiment API returned unsuccessful response. Retrying..."
+        );
+      } catch (error) {
+        console.error(
+          `❌ Sentiment API call failed (attempt ${i + 1}):`,
+          error.response ? error.response.data : error
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2s before retrying
+    }
+    console.error("🚨 Sentiment API failed after multiple retries.");
+    return null; // Return null if all retries fail
+  };
+  // Function to process a batch of comments
+  const processBatch = async (batch) => {
+    try {
+      console.log(`🚀 Processing batch of ${batch.length} comments...`);
+      // Step 1: Detect and translate non-English comments in parallel
+      const translatedComments = await Promise.all(
+        batch.map(async (comment) => {
+          try {
+            const [detection] = await translate.detect(comment.main_comment);
+            if (detection.language !== "en") {
+              const [translated] = await translate.translate(
+                comment.main_comment,
+                "en"
+              );
+              return { id: comment.id, text: translated };
+            }
+            return { id: comment.id, text: comment.main_comment };
+          } catch (error) {
+            console.error(
+              `❌ Translation failed for comment ID ${comment.id}:`,
+              error
+            );
+            return { id: comment.id, text: comment.main_comment }; // Use original text if translation fails
+          }
+        })
+      );
+      console.log(
+        `📤 Sending batch of ${translatedComments.length} comments for sentiment analysis...`
+      );
+      // Step 2: Send translated comments for sentiment analysis with retry
+      const predictions = await fetchSentimentWithRetry({
+        comments: translatedComments.map((c) => c.text),
+      });
+      if (!predictions) return; // Skip if sentiment API failed
+      // Step 3: Bulk update sentiment tags using transactions
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        for (let i = 0; i < translatedComments.length; i++) {
+          await client.query(
+            "UPDATE comments_api SET sentiment_tag = $1 WHERE id = $2",
+            [
+              predictions[i] === "negative" ? "bad" : "good",
+              translatedComments[i].id,
+            ]
+          );
+        }
+        await client.query("COMMIT");
+        console.log(
+          `✅ Successfully updated ${translatedComments.length} comments in the database.`
+        );
+      } catch (updateError) {
+        await client.query("ROLLBACK");
+        console.error("❌ Database update failed:", updateError);
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error("❌ Error processing batch:", error);
+    }
+  };
+  const processAllComments = (comments) => {
+    setImmediate(async () => {
+      try {
+        let batchIndex = 1;
+        for (let i = 0; i < comments.length; i += BATCH_SIZE) {
+          const batch = comments.slice(i, i + BATCH_SIZE);
+          console.log(
+            `⏳ Processing batch ${batchIndex}/${Math.ceil(
+              comments.length / BATCH_SIZE
+            )}`
+          );
+          await processBatch(batch); // Ensure each batch completes before moving on
+          batchIndex++;
+        }
+        console.log("🎉 Sentiment analysis completed in the background.");
+      } catch (error) {
+        console.error("❌ Error processing all comments:", error);
+      }
+    });
+  };
+  // API Route to Start Processing
+  app.post("/api/comments/analyze", async (req, res) => {
+    try {
+      console.log("📢 Starting sentiment analysis for ALL comments...");
+      // Fetch all comments (NOT just untagged ones)
+      const { rows: comments } = await pool.query(
+        "SELECT id, main_comment FROM comments_api"
+      );
+      if (comments.length === 0) {
+        console.log("✅ No comments found.");
+        return res.json({ message: "No comments found." });
+      }
+      console.log(`✅ Queuing ${comments.length} comments for processing...`);
+      // Process comments asynchronously (in background)
+      processAllComments(comments);
+      // Return immediately to avoid timeout
+      res.json({
+        message: "Sentiment analysis started. Results will update soon.",
+      });
+    } catch (error) {
+      console.error("❌ Error analyzing comments:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
+
 // --------------------------------------------------
 // 2) Get Comments By Type
 //    (Main => comments_api, Good => good_comments, Bad => bad_comments)
@@ -70,7 +203,7 @@ app.get("/comments/:type", async (req, res) => {
           // For youtube_good or youtube_bad, assume they have an "updated_at" column already.
           const result = await pool.query(`
             SELECT * FROM ${table}
-            ORDER BY (sentiment_tag = 'bad') DESC, updated_at DESC
+            ORDER BY (sentiment_tag = 'bad') DESC, time DESC
           `);
           res.json(result.rows);
         }
