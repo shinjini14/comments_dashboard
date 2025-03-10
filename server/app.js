@@ -303,7 +303,7 @@ app.get("/comments/:type", async (req, res) => {
         // For YouTube, delete from youtube_comments and insert into youtube_good.
         moveQuery = `
           WITH moved AS (
-            DELETE FROM youtube_comments WHERE comment_id = $1 RETURNING *
+            DELETE FROM youtube_comments WHERE comment_id::text = $1 RETURNING *
           )
           INSERT INTO youtube_good SELECT * FROM moved;
         `;
@@ -331,7 +331,7 @@ app.get("/comments/:type", async (req, res) => {
       if (source === "youtube") {
         moveQuery = `
           WITH moved AS (
-            DELETE FROM youtube_comments WHERE comment_id = $1 RETURNING *
+            DELETE FROM youtube_comments WHERE comment_id::text = $1 RETURNING *
           )
           INSERT INTO youtube_bad SELECT * FROM moved;
         `;
@@ -360,7 +360,7 @@ app.get("/comments/:type", async (req, res) => {
         // Try undoing from youtube_good; if not found, try from youtube_bad.
         query = `
           WITH moved AS (
-            DELETE FROM youtube_good WHERE comment_id = $1 RETURNING *
+            DELETE FROM youtube_good WHERE comment_id::text = $1 RETURNING *
           )
           INSERT INTO youtube_comments SELECT * FROM moved;
         `;
@@ -368,7 +368,7 @@ app.get("/comments/:type", async (req, res) => {
         if (result.rowCount === 0) {
           query = `
             WITH moved AS (
-              DELETE FROM youtube_bad WHERE comment_id = $1 RETURNING *
+              DELETE FROM youtube_bad WHERE comment_id::text = $1 RETURNING *
             )
             INSERT INTO youtube_comments SELECT * FROM moved;
           `;
@@ -410,7 +410,7 @@ app.get("/comments/:type", async (req, res) => {
       if (source === "youtube") {
         moveQuery = `
           WITH moved AS (
-            DELETE FROM youtube_comments WHERE comment_id = ANY($1) RETURNING *
+            DELETE FROM youtube_comments WHERE comment_id::text = ANY($1) RETURNING *
           )
           INSERT INTO youtube_good SELECT * FROM moved;
         `;
@@ -438,7 +438,7 @@ app.get("/comments/:type", async (req, res) => {
       if (source === "youtube") {
         moveQuery = `
           WITH moved AS (
-            DELETE FROM youtube_comments WHERE comment_id = ANY($1) RETURNING *
+            DELETE FROM youtube_comments WHERE comment_id::text = ANY($1) RETURNING *
           )
           INSERT INTO youtube_bad SELECT * FROM moved;
         `;
@@ -467,7 +467,7 @@ app.get("/comments/:type", async (req, res) => {
         resultGood = await pool.query(
           `
           WITH moved AS (
-            DELETE FROM youtube_good WHERE comment_id = ANY($1) RETURNING *
+            DELETE FROM youtube_good WHERE comment_id::text = ANY($1) RETURNING *
           )
           INSERT INTO youtube_comments SELECT * FROM moved;
           `,
@@ -477,7 +477,7 @@ app.get("/comments/:type", async (req, res) => {
           await pool.query(
             `
             WITH moved AS (
-              DELETE FROM youtube_bad WHERE comment_id = ANY($1) RETURNING *
+              DELETE FROM youtube_bad WHERE comment_id::text = ANY($1) RETURNING *
             )
             INSERT INTO youtube_comments SELECT * FROM moved;
             `,
