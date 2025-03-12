@@ -25,6 +25,7 @@ import {
   Search,
   GTranslateOutlined,
   DeleteOutline,
+  YouTube as YouTubeIcon,
 } from "@mui/icons-material";
 import UndoIcon from "@mui/icons-material/Undo";
 import InstagramIcon from "@mui/icons-material/Instagram";
@@ -33,9 +34,9 @@ import TwitterIcon from "@mui/icons-material/Twitter";
 import { format } from "date-fns";
 
 const Dashboard = () => {
-  // -------------------------------
+  // -------------------------------------------------
   // 1. State
-  // -------------------------------
+  // -------------------------------------------------
   const [allComments, setAllComments] = useState({
     main: [],
     good: [],
@@ -54,44 +55,119 @@ const Dashboard = () => {
     translatedText: "",
   });
 
-  // Use the new DataGrid selection state variable (MUI DataGrid v6+)
+  // DataGrid selection
   const [rowSelectionModel, setRowSelectionModel] = useState([]);
 
-  // Bulk confirmation dialog
-  const [bulkDialog, setBulkDialog] = useState({
-    open: false,
-    action: "", // "approve" | "reject" | "undo" | "delete"
-  });
+  // Bulk & single-delete dialogs
+  const [bulkDialog, setBulkDialog] = useState({ open: false, action: "" });
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null });
 
-  // Single delete confirmation dialog
-  const [deleteDialog, setDeleteDialog] = useState({
-    open: false,
-    id: null,
-  });
-
-  // -------------------------------
-  // 2. Fetch All Data Once
-  // -------------------------------
+  // -------------------------------------------------
+  // 2. Fetch Standard & YouTube Comments
+  // -------------------------------------------------
   useEffect(() => {
     fetchAllData();
   }, []);
 
+  // Helper to parse time safely
+  const getTimeMs = (row) => {
+    // Row might have updated_at or time
+    const raw = row.updated_at || row.time;
+    if (!raw) return 0; // no date => fallback
+    const ms = new Date(raw).getTime();
+    return Number.isNaN(ms) ? 0 : ms;
+  };
+
+  // Sort so that 'bad' is first, then by descending time
+  const sortComments = (arr) => {
+    return arr.slice().sort((a, b) => {
+      // 1) 'bad' first
+      if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
+      if (b.sentiment_tag === "bad" && a.sentiment_tag !== "bad") return 1;
+      // 2) then by descending date/time
+      return getTimeMs(b) - getTimeMs(a);
+    });
+  };
+
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      const [mainRes, goodRes, badRes, videosRes] = await Promise.all([
+      // Standard + YouTube endpoints
+      const [
+        mainStd,
+        mainYt,
+        goodStd,
+        goodYt,
+        badStd,
+        badYt,
+        videosRes,
+      ] = await Promise.all([
         axios.get(`${process.env.REACT_APP_API_URL}/comments/main`),
+        axios.get(`${process.env.REACT_APP_API_URL}/comments/main?source=youtube`),
         axios.get(`${process.env.REACT_APP_API_URL}/comments/good`),
+        axios.get(`${process.env.REACT_APP_API_URL}/comments/good?source=youtube`),
         axios.get(`${process.env.REACT_APP_API_URL}/comments/bad`),
+        axios.get(`${process.env.REACT_APP_API_URL}/comments/bad?source=youtube`),
         axios.get(`${process.env.REACT_APP_API_URL}/api/videos`),
       ]);
 
+      // Merge main (REMAP "text" -> main_comment, "author" -> main_comment_user)
+      const mainCombined = [
+        ...mainStd.data.map((row) => ({
+          ...row,
+          source: "default",
+        })),
+        ...mainYt.data.map((row) => ({
+          ...row,
+          source: "youtube",
+          video_id: row.video_db_id,     // from youtube_comments
+          main_comment: row.text,        // REMAP from "text"
+          main_comment_user: row.author, // REMAP from "author"
+        })),
+      ];
+
+      // Merge good
+      const goodCombined = [
+        ...goodStd.data.map((row) => ({
+          ...row,
+          source: "default",
+        })),
+        ...goodYt.data.map((row) => ({
+          ...row,
+          source: "youtube",
+          video_id: row.video_db_id,
+          main_comment: row.text,
+          main_comment_user: row.author,
+        })),
+      ];
+
+      // Merge bad
+      const badCombined = [
+        ...badStd.data.map((row) => ({
+          ...row,
+          source: "default",
+        })),
+        ...badYt.data.map((row) => ({
+          ...row,
+          source: "youtube",
+          video_id: row.video_db_id,
+          main_comment: row.text,
+          main_comment_user: row.author,
+        })),
+      ];
+
+      // Sort each array so that 'bad' is first, then by descending time
+      const sortedMain = sortComments(mainCombined);
+      const sortedGood = sortComments(goodCombined);
+      const sortedBad = sortComments(badCombined);
+
       setAllComments({
-        main: mainRes.data,
-        good: goodRes.data,
-        bad: badRes.data,
+        main: sortedMain,
+        good: sortedGood,
+        bad: sortedBad,
       });
 
+      // Build video mapping: id => url
       const mapping = {};
       videosRes.data.forEach((video) => {
         mapping[video.id] = video.url;
@@ -106,17 +182,22 @@ const Dashboard = () => {
 
   const currentComments = allComments[selectedDashboard] || [];
 
-  // -------------------------------
-  // 3. Single Actions
-  // -------------------------------
-  const approveComment = async (id) => {
+  // Unique row ID
+  const getRowId = (row) => row.id || row.comment_id || row.video_id;
+
+  // -------------------------------------------------
+  // 3. Single Approve/Reject/Undo/Delete
+  // -------------------------------------------------
+  const approveComment = async (id, source = "default") => {
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/approve/${id}`);
-      const item = allComments.main.find((c) => c.id === id);
+      const queryParam = source === "youtube" ? "?source=youtube" : "";
+      await axios.post(`${process.env.REACT_APP_API_URL}/approve/${id}${queryParam}`);
+      // Move from main => good
+      const item = allComments.main.find((c) => getRowId(c) === id);
       if (item) {
         setAllComments((prev) => ({
           ...prev,
-          main: prev.main.filter((c) => c.id !== id),
+          main: prev.main.filter((c) => getRowId(c) !== id),
           good: [item, ...prev.good],
         }));
       }
@@ -125,14 +206,16 @@ const Dashboard = () => {
     }
   };
 
-  const rejectComment = async (id) => {
+  const rejectComment = async (id, source = "default") => {
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/reject/${id}`);
-      const item = allComments.main.find((c) => c.id === id);
+      const queryParam = source === "youtube" ? "?source=youtube" : "";
+      await axios.post(`${process.env.REACT_APP_API_URL}/reject/${id}${queryParam}`);
+      // Move from main => bad
+      const item = allComments.main.find((c) => getRowId(c) === id);
       if (item) {
         setAllComments((prev) => ({
           ...prev,
-          main: prev.main.filter((c) => c.id !== id),
+          main: prev.main.filter((c) => getRowId(c) !== id),
           bad: [item, ...prev.bad],
         }));
       }
@@ -141,23 +224,25 @@ const Dashboard = () => {
     }
   };
 
-  const undoComment = async (id) => {
+  const undoComment = async (id, source = "default") => {
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/undo/${id}`);
-      const itemGood = allComments.good.find((c) => c.id === id);
+      const queryParam = source === "youtube" ? "?source=youtube" : "";
+      await axios.post(`${process.env.REACT_APP_API_URL}/undo/${id}${queryParam}`);
+      // Move from good/bad => main
+      const itemGood = allComments.good.find((c) => getRowId(c) === id);
       if (itemGood) {
         setAllComments((prev) => ({
           ...prev,
-          good: prev.good.filter((c) => c.id !== id),
+          good: prev.good.filter((c) => getRowId(c) !== id),
           main: [itemGood, ...prev.main],
         }));
         return;
       }
-      const itemBad = allComments.bad.find((c) => c.id === id);
+      const itemBad = allComments.bad.find((c) => getRowId(c) === id);
       if (itemBad) {
         setAllComments((prev) => ({
           ...prev,
-          bad: prev.bad.filter((c) => c.id !== id),
+          bad: prev.bad.filter((c) => getRowId(c) !== id),
           main: [itemBad, ...prev.main],
         }));
       }
@@ -166,7 +251,6 @@ const Dashboard = () => {
     }
   };
 
-  // Single delete with confirmation
   const handleSingleDelete = (id) => {
     setDeleteDialog({ open: true, id });
   };
@@ -178,7 +262,9 @@ const Dashboard = () => {
       );
       setAllComments((prev) => ({
         ...prev,
-        [selectedDashboard]: prev[selectedDashboard].filter((c) => c.id !== id),
+        [selectedDashboard]: prev[selectedDashboard].filter(
+          (c) => getRowId(c) !== id
+        ),
       }));
     } catch (error) {
       console.error("Error deleting comment:", error);
@@ -187,13 +273,10 @@ const Dashboard = () => {
     }
   };
 
-  // -------------------------------
-  // 4. Bulk Actions with Confirmation
-  // -------------------------------
-  const handleBulkAction = (action) => {
-    setBulkDialog({ open: true, action });
-  };
-
+  // -------------------------------------------------
+  // 4. Bulk Actions
+  // -------------------------------------------------
+  const handleBulkAction = (action) => setBulkDialog({ open: true, action });
   const confirmBulkAction = async () => {
     try {
       if (bulkDialog.action === "approve") {
@@ -201,11 +284,11 @@ const Dashboard = () => {
           ids: rowSelectionModel,
         });
         const approvedItems = allComments.main.filter((c) =>
-          rowSelectionModel.includes(c.id)
+          rowSelectionModel.includes(getRowId(c))
         );
         setAllComments((prev) => ({
           ...prev,
-          main: prev.main.filter((c) => !rowSelectionModel.includes(c.id)),
+          main: prev.main.filter((c) => !rowSelectionModel.includes(getRowId(c))),
           good: [...approvedItems, ...prev.good],
         }));
       } else if (bulkDialog.action === "reject") {
@@ -213,24 +296,22 @@ const Dashboard = () => {
           ids: rowSelectionModel,
         });
         const rejectedItems = allComments.main.filter((c) =>
-          rowSelectionModel.includes(c.id)
+          rowSelectionModel.includes(getRowId(c))
         );
         setAllComments((prev) => ({
           ...prev,
-          main: prev.main.filter((c) => !rowSelectionModel.includes(c.id)),
+          main: prev.main.filter((c) => !rowSelectionModel.includes(getRowId(c))),
           bad: [...rejectedItems, ...prev.bad],
         }));
       } else if (bulkDialog.action === "delete") {
         await axios.post(
           `${process.env.REACT_APP_API_URL}/comments/${selectedDashboard}/bulk-delete`,
-          {
-            ids: rowSelectionModel,
-          }
+          { ids: rowSelectionModel }
         );
         setAllComments((prev) => ({
           ...prev,
           [selectedDashboard]: prev[selectedDashboard].filter(
-            (c) => !rowSelectionModel.includes(c.id)
+            (c) => !rowSelectionModel.includes(getRowId(c))
           ),
         }));
       } else if (bulkDialog.action === "undo") {
@@ -238,15 +319,15 @@ const Dashboard = () => {
           ids: rowSelectionModel,
         });
         const undoneGood = allComments.good.filter((c) =>
-          rowSelectionModel.includes(c.id)
+          rowSelectionModel.includes(getRowId(c))
         );
         const undoneBad = allComments.bad.filter((c) =>
-          rowSelectionModel.includes(c.id)
+          rowSelectionModel.includes(getRowId(c))
         );
         setAllComments((prev) => ({
           ...prev,
-          good: prev.good.filter((c) => !rowSelectionModel.includes(c.id)),
-          bad: prev.bad.filter((c) => !rowSelectionModel.includes(c.id)),
+          good: prev.good.filter((c) => !rowSelectionModel.includes(getRowId(c))),
+          bad: prev.bad.filter((c) => !rowSelectionModel.includes(getRowId(c))),
           main: [...undoneGood, ...undoneBad, ...prev.main],
         }));
       }
@@ -254,19 +335,18 @@ const Dashboard = () => {
       console.error(`Error in bulk ${bulkDialog.action}:`, error);
     } finally {
       setBulkDialog({ open: false, action: "" });
-      setRowSelectionModel([]); // clear selection
+      setRowSelectionModel([]);
     }
   };
 
-  // -------------------------------
+  // -------------------------------------------------
   // 5. Translation
-  // -------------------------------
+  // -------------------------------------------------
   const translateComment = async (commentId, originalComment) => {
     try {
-      const response = await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/translate`,
-        { text: originalComment }
-      );
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/translate`, {
+        text: originalComment,
+      });
       if (response.data.translatedText) {
         setTranslationModal({
           open: true,
@@ -281,14 +361,15 @@ const Dashboard = () => {
     }
   };
 
-  // -------------------------------
+  // -------------------------------------------------
   // 6. Comment Thread Modal
-  // -------------------------------
+  // -------------------------------------------------
   const openModal = async (comment) => {
     if (!comment || !comment.video_id) return;
     try {
+      const queryParam = comment.source === "youtube" ? "?source=youtube" : "";
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/comments/${comment.video_id}/details`
+        `${process.env.REACT_APP_API_URL}/api/comments/${comment.video_id}/details${queryParam}`
       );
       setModalData({
         main_comment_user: comment.main_comment_user,
@@ -297,6 +378,7 @@ const Dashboard = () => {
         video_id: comment.video_id,
         replies: response.data.replies || [],
         sentiment_tag: comment.sentiment_tag,
+        source: comment.source,
       });
       setIsModalOpen(true);
     } catch (error) {
@@ -309,23 +391,26 @@ const Dashboard = () => {
     setModalData(null);
   };
 
-  // -------------------------------
+  // -------------------------------------------------
   // 7. DataGrid Columns
-  // -------------------------------
+  // -------------------------------------------------
   const columns = [
     {
       field: "platform",
       headerName: "Page",
       flex: 0.5,
       renderCell: (params) => {
-        const url = videoMapping[params.row.video_id];
+        const row = params.row;
+        const url = videoMapping[row.video_id];
+        // YouTube icon if source = youtube
+        if (row.source === "youtube") {
+          return <YouTubeIcon sx={{ color: "#FF0000" }} />;
+        }
+        // Otherwise, check standard
         if (!url) return null;
-        if (url.includes("instagram.com"))
-          return <InstagramIcon sx={{ color: "#E1306C" }} />;
-        else if (url.includes("facebook.com"))
-          return <FacebookIcon sx={{ color: "#1877F2" }} />;
-        else if (url.includes("twitter.com"))
-          return <TwitterIcon sx={{ color: "#1DA1F2" }} />;
+        if (url.includes("instagram.com")) return <InstagramIcon sx={{ color: "#E1306C" }} />;
+        if (url.includes("facebook.com")) return <FacebookIcon sx={{ color: "#1877F2" }} />;
+        if (url.includes("twitter.com")) return <TwitterIcon sx={{ color: "#1DA1F2" }} />;
         return null;
       },
     },
@@ -340,7 +425,6 @@ const Dashboard = () => {
           sx={{
             whiteSpace: "normal",
             wordBreak: "break-word",
-            overflowWrap: "break-word",
             cursor: "pointer",
             color: "#000",
             "&:hover": { textDecoration: "underline" },
@@ -354,10 +438,15 @@ const Dashboard = () => {
       field: "updated_at",
       headerName: "Time",
       width: 150,
-      renderCell: (params) =>
-        params.value
-          ? format(new Date(params.value), "dd/MM/yyyy, HH:mm")
-          : "N/A",
+      renderCell: (params) => {
+        // For YouTube rows, we might have updated_at from the joined stats table, or time from the row
+        const timeValue = params.row.updated_at || params.row.time;
+        if (!timeValue) return "N/A";
+        // Safely parse
+        const ms = new Date(timeValue).getTime();
+        if (Number.isNaN(ms)) return "N/A";
+        return format(new Date(ms), "dd/MM/yyyy, HH:mm");
+      },
     },
     {
       field: "sentiment_tag",
@@ -373,13 +462,12 @@ const Dashboard = () => {
             borderRadius: "12px",
             backgroundColor:
               params.row.sentiment_tag === "bad"
-                ? "rgba(211, 47, 47, 0.15)"
-                : "rgba(56, 142, 60, 0.15)",
+                ? "rgba(211,47,47,0.15)"
+                : "rgba(56,142,60,0.15)",
             color: params.row.sentiment_tag === "bad" ? "#D32F2F" : "#388E3C",
             fontWeight: 500,
             fontSize: "12px",
             textTransform: "capitalize",
-            textAlign: "center",
             minWidth: "50px",
             maxHeight: "20px",
           }}
@@ -393,7 +481,9 @@ const Dashboard = () => {
       headerName: "Actions",
       flex: 1,
       renderCell: (params) => {
-        const { id } = params.row;
+        const row = params.row;
+        const id = getRowId(row);
+        const source = row.source || "default";
         return (
           <Box sx={{ display: "flex", gap: "4px" }}>
             {selectedDashboard === "main" && (
@@ -401,16 +491,16 @@ const Dashboard = () => {
                 <IconButton
                   color="primary"
                   size="small"
-                  onClick={() => approveComment(id)}
                   title="Approve"
+                  onClick={() => approveComment(id, source)}
                 >
                   <ThumbUp fontSize="small" />
                 </IconButton>
                 <IconButton
                   color="secondary"
                   size="small"
-                  onClick={() => rejectComment(id)}
                   title="Reject"
+                  onClick={() => rejectComment(id, source)}
                 >
                   <ThumbDown fontSize="small" />
                 </IconButton>
@@ -420,8 +510,8 @@ const Dashboard = () => {
               <IconButton
                 color="info"
                 size="small"
-                onClick={() => undoComment(id)}
                 title="Undo"
+                onClick={() => undoComment(id, source)}
               >
                 <UndoIcon fontSize="small" />
               </IconButton>
@@ -429,16 +519,15 @@ const Dashboard = () => {
             <IconButton
               color="error"
               size="small"
-              onClick={() => handleSingleDelete(id)}
               title="Delete"
+              onClick={() => handleSingleDelete(id)}
             >
               <DeleteOutline fontSize="small" />
             </IconButton>
             <IconButton
-              color="inherit"
               size="small"
-              onClick={() => translateComment(id, params.row.main_comment)}
               title="Translate"
+              onClick={() => translateComment(id, row.main_comment)}
             >
               <GTranslateOutlined fontSize="small" />
             </IconButton>
@@ -448,6 +537,9 @@ const Dashboard = () => {
     },
   ];
 
+  // -------------------------------------------------
+  // 8. Rendering
+  // -------------------------------------------------
   if (loading) {
     return (
       <Box
@@ -463,6 +555,7 @@ const Dashboard = () => {
     );
   }
 
+  // Filter by URL
   const filteredComments = currentComments.filter((comment) => {
     const url = videoMapping[comment.video_id];
     return url && url.toLowerCase().includes(searchQuery.toLowerCase());
@@ -473,7 +566,7 @@ const Dashboard = () => {
       {/* Top Bar */}
       <AppBar position="fixed" sx={{ backgroundColor: "#3949ab" }}>
         <Toolbar>
-        <Typography variant="h6" sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Comments Dashboard
           </Typography>
           <Button
@@ -490,7 +583,7 @@ const Dashboard = () => {
       </AppBar>
 
       {/* Tabs */}
-      <Box sx={{ marginTop: "60px", paddingX: 2 }}>
+      <Box sx={{ mt: "60px", px: 2 }}>
         <Tabs
           value={selectedDashboard}
           onChange={(e, newValue) => {
@@ -503,7 +596,7 @@ const Dashboard = () => {
           sx={{
             backgroundColor: "#fff",
             borderRadius: "6px",
-            marginTop: "70px",
+            mt: "70px",
             boxShadow: "0px 1px 2px rgba(0,0,0,0.1)",
             minHeight: "40px",
             "& .MuiTab-root": {
@@ -520,7 +613,6 @@ const Dashboard = () => {
       </Box>
 
       {/* Search + Bulk Action Toolbar */}
-      {/* Smaller Search + Bulk Action Toolbar */}
       <Paper
         elevation={2}
         sx={{
@@ -531,7 +623,6 @@ const Dashboard = () => {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-         
         }}
       >
         <TextField
@@ -556,7 +647,6 @@ const Dashboard = () => {
             },
           }}
         />
-
         <Box sx={{ display: "flex", gap: "8px" }}>
           {selectedDashboard === "main" && (
             <>
@@ -564,29 +654,24 @@ const Dashboard = () => {
                 variant="contained"
                 size="small"
                 sx={{
-                  backgroundColor: "#1976d2", // Same blue as Thumbs Up
+                  backgroundColor: "#1976d2",
                   color: "#fff",
                   textTransform: "none",
-                  "&:hover": {
-                    backgroundColor: "#1565c0", // Slightly darker blue on hover
-                  },
+                  "&:hover": { backgroundColor: "#1565c0" },
                 }}
                 disabled={rowSelectionModel.length === 0}
                 onClick={() => handleBulkAction("approve")}
               >
                 Bulk Approve
               </Button>
-
               <Button
                 variant="contained"
                 size="small"
                 sx={{
-                  backgroundColor: "#9c27b0", // Purple 500
+                  backgroundColor: "#9c27b0",
                   color: "#fff",
                   textTransform: "none",
-                  "&:hover": {
-                    backgroundColor: "#7b1fa2", // Purple 700
-                  },
+                  "&:hover": { backgroundColor: "#7b1fa2" },
                 }}
                 disabled={rowSelectionModel.length === 0}
                 onClick={() => handleBulkAction("reject")}
@@ -627,34 +712,36 @@ const Dashboard = () => {
           </Button>
         </Box>
       </Paper>
-      {/* DataGrid */}
-      <Box sx={{ paddingX: 2 }}>
-        <Paper elevation={3}>
-          <DataGrid
-            rows={filteredComments}
-            columns={columns}
-            pageSize={10}
-            checkboxSelection
-            onRowSelectionModelChange={(newModel) => {
-              console.log("Selected row IDs:", newModel);
-              setRowSelectionModel(newModel);
-            }}
-            rowSelectionModel={rowSelectionModel}
-            getRowId={(row) => row.id}
-            disableRowSelectionOnClick
-            sx={{
-              "& .MuiDataGrid-columnHeaders": {
-                backgroundColor: "#e0e0e0",
-                fontWeight: "bold",
-                color: "#3949ab",
-              },
-              "& .MuiDataGrid-row:nth-of-type(odd)": {
-                backgroundColor: "#fafafa",
-              },
-              border: "none",
-              borderRadius: "8px",
-            }}
-          />
+
+      {/* DataGrid Table */}
+      <Box sx={{ px: 2 }}>
+        <Paper elevation={3} sx={{ borderRadius: "8px", overflow: "hidden" }}>
+          <Box>
+            <DataGrid
+              rows={filteredComments}
+              columns={columns}
+              pageSize={10}
+              checkboxSelection
+              onRowSelectionModelChange={(newModel) => {
+                console.log("Selected row IDs:", newModel);
+                setRowSelectionModel(newModel);
+              }}
+              rowSelectionModel={rowSelectionModel}
+              getRowId={getRowId}
+              disableRowSelectionOnClick
+              sx={{
+                "& .MuiDataGrid-columnHeaders": {
+                  backgroundColor: "#e0e0e0",
+                  fontWeight: "bold",
+                  color: "#3949ab",
+                },
+                "& .MuiDataGrid-row:nth-of-type(odd)": {
+                  backgroundColor: "#fafafa",
+                },
+                border: "none",
+              }}
+            />
+          </Box>
         </Paper>
       </Box>
 
@@ -669,7 +756,7 @@ const Dashboard = () => {
           Translated Comment
         </DialogTitle>
         <DialogContent>
-          <Typography sx={{ fontSize: "16px", color: "#333", padding: "10px" }}>
+          <Typography sx={{ fontSize: "16px", color: "#333", p: 2 }}>
             {translationModal.translatedText}
           </Typography>
         </DialogContent>
@@ -695,7 +782,7 @@ const Dashboard = () => {
             "& .MuiDialog-paper": {
               borderRadius: "12px",
               boxShadow: "0px 6px 16px rgba(0, 0, 0, 0.2)",
-              padding: "10px",
+              p: 2,
             },
           }}
         >
@@ -714,14 +801,10 @@ const Dashboard = () => {
               ✖
             </IconButton>
           </DialogTitle>
-          <DialogContent sx={{ padding: "16px" }}>
-            <Box sx={{ marginBottom: "14px" }}>
-              <Typography
-                variant="body1"
-                sx={{ fontSize: "15px", lineHeight: "1.5" }}
-              >
-                <strong>{modalData.main_comment_user}</strong>:{" "}
-                {modalData.main_comment}
+          <DialogContent sx={{ p: 2 }}>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body1" sx={{ fontSize: "15px", lineHeight: "1.5" }}>
+                <strong>{modalData.main_comment_user}</strong>: {modalData.main_comment}
               </Typography>
             </Box>
             <Box
@@ -732,9 +815,9 @@ const Dashboard = () => {
                 width: "100%",
                 aspectRatio: "4/5",
                 backgroundColor: "#000",
-                borderRadius: "10px",
+                borderRadius: "8px",
                 overflow: "hidden",
-                marginBottom: "16px",
+                mb: 2,
               }}
             >
               {modalData.preview ? (
@@ -749,22 +832,15 @@ const Dashboard = () => {
                 </Typography>
               )}
             </Box>
-            <Box sx={{ marginBottom: "14px" }}>
-              <Typography
-                variant="subtitle2"
-                sx={{ fontSize: "14px", color: "#555" }}
-              >
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ fontSize: "14px", color: "#555" }}>
                 <strong>URL:</strong>{" "}
                 {videoMapping[modalData.video_id] ? (
                   <a
                     href={videoMapping[modalData.video_id]}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{
-                      color: "#303f9f",
-                      textDecoration: "none",
-                      fontWeight: "bold",
-                    }}
+                    style={{ color: "#303f9f", textDecoration: "none", fontWeight: "bold" }}
                   >
                     {videoMapping[modalData.video_id]}
                   </a>
@@ -773,77 +849,46 @@ const Dashboard = () => {
                 )}
               </Typography>
             </Box>
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                marginBottom: "16px",
-              }}
-            >
+            <Box sx={{ mb: 2 }}>
               <Typography
                 variant="body2"
                 sx={{
                   fontSize: "14px",
                   fontWeight: "bold",
-                  padding: "6px 12px",
+                  px: 2,
+                  py: 1,
                   borderRadius: "12px",
                   backgroundColor:
                     modalData.sentiment_tag === "bad"
-                      ? "rgba(211, 47, 47, 0.15)"
-                      : "rgba(56, 142, 60, 0.15)",
-                  color:
-                    modalData.sentiment_tag === "bad" ? "#D32F2F" : "#388E3C",
+                      ? "rgba(211,47,47,0.15)"
+                      : "rgba(56,142,60,0.15)",
+                  color: modalData.sentiment_tag === "bad" ? "#D32F2F" : "#388E3C",
                 }}
               >
                 {modalData.sentiment_tag?.toUpperCase()}
               </Typography>
             </Box>
-            <Typography
-              variant="subtitle1"
-              sx={{
-                fontWeight: "bold",
-                fontSize: "14px",
-                marginBottom: "10px",
-              }}
-            >
+            <Typography variant="subtitle1" sx={{ fontWeight: "bold", mb: 1 }}>
               Replies:
             </Typography>
-            <Box
-              sx={{
-                paddingLeft: "12px",
-                maxHeight: "200px",
-                overflowY: "auto",
-              }}
-            >
+            <Box sx={{ pl: 1, maxHeight: "200px", overflowY: "auto" }}>
               {modalData.replies.filter(
                 (reply) => reply.main_comment_id === modalData.video_id
               ).length > 0 ? (
                 modalData.replies
-                  .filter(
-                    (reply) => reply.main_comment_id === modalData.video_id
-                  )
+                  .filter((reply) => reply.main_comment_id === modalData.video_id)
                   .map((reply, index) => (
-                    <Box key={index} sx={{ marginBottom: "12px" }}>
-                      <Typography
-                        variant="body2"
-                        sx={{ fontSize: "13px", fontWeight: "bold" }}
-                      >
+                    <Box key={index} sx={{ mb: 1 }}>
+                      <Typography variant="body2" sx={{ fontSize: "13px", fontWeight: "bold" }}>
                         {reply.reply_user}
                       </Typography>
-                      <Typography
-                        variant="body2"
-                        sx={{ fontSize: "13px", color: "#333" }}
-                      >
+                      <Typography variant="body2" sx={{ fontSize: "13px", color: "#333" }}>
                         {reply.reply}
                       </Typography>
                     </Box>
                   ))
               ) : (
-                <Typography
-                  variant="body2"
-                  sx={{ fontStyle: "italic", color: "#777" }}
-                >
+                <Typography variant="body2" sx={{ fontStyle: "italic", color: "#777" }}>
                   No replies available.
                 </Typography>
               )}
@@ -853,10 +898,7 @@ const Dashboard = () => {
       )}
 
       {/* Bulk Action Confirmation Dialog */}
-      <Dialog
-        open={bulkDialog.open}
-        onClose={() => setBulkDialog({ open: false, action: "" })}
-      >
+      <Dialog open={bulkDialog.open} onClose={() => setBulkDialog({ open: false, action: "" })}>
         <DialogTitle>
           {bulkDialog.action === "approve" && "Confirm Bulk Approve"}
           {bulkDialog.action === "reject" && "Confirm Bulk Reject"}
@@ -865,14 +907,11 @@ const Dashboard = () => {
         </DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to <b>{bulkDialog.action}</b> the selected
-            comments?
+            Are you sure you want to <b>{bulkDialog.action}</b> the selected comments?
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBulkDialog({ open: false, action: "" })}>
-            Cancel
-          </Button>
+          <Button onClick={() => setBulkDialog({ open: false, action: "" })}>Cancel</Button>
           <Button onClick={confirmBulkAction} color="primary">
             Confirm
           </Button>
@@ -880,10 +919,7 @@ const Dashboard = () => {
       </Dialog>
 
       {/* Single Delete Confirmation Dialog */}
-      <Dialog
-        open={deleteDialog.open}
-        onClose={() => setDeleteDialog({ open: false, id: null })}
-      >
+      <Dialog open={deleteDialog.open} onClose={() => setDeleteDialog({ open: false, id: null })}>
         <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>
           <Typography>
@@ -891,9 +927,7 @@ const Dashboard = () => {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialog({ open: false, id: null })}>
-            Cancel
-          </Button>
+          <Button onClick={() => setDeleteDialog({ open: false, id: null })}>Cancel</Button>
           <Button onClick={confirmSingleDelete} color="primary">
             Confirm
           </Button>
