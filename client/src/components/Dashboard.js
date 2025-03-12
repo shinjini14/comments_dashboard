@@ -83,8 +83,8 @@ const Dashboard = () => {
       return getTimeMs(b) - getTimeMs(a);
     });
   };
-
-  useEffect(() => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+useEffect(() => {
     fetchAllData();
   }, []);
 
