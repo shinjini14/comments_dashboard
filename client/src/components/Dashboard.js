@@ -62,12 +62,7 @@ const Dashboard = () => {
   const [bulkDialog, setBulkDialog] = useState({ open: false, action: "" });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null });
 
-  // -------------------------------------------------
-  // 2. Fetch Standard & YouTube Comments
-  // -------------------------------------------------
-  useEffect(() => {
-    fetchAllData();
-  }, []);
+
 
   // Helper to parse time safely
   const getTimeMs = (row) => {
@@ -179,6 +174,13 @@ const Dashboard = () => {
       setLoading(false);
     }
   };
+
+    // -------------------------------------------------
+  // 2. Fetch Standard & YouTube Comments
+  // -------------------------------------------------
+  useEffect(() => {
+    fetchAllData();
+  }, []);
 
   const currentComments = allComments[selectedDashboard] || [];
 
