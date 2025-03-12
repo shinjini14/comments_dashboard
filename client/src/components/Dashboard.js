@@ -63,26 +63,26 @@ const Dashboard = () => {
   const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null });
 
 
+ // Helper to parse time safely
+ const getTimeMs = useCallback((row) => {
+  // Row might have updated_at or time
+  const raw = row.updated_at || row.time;
+  if (!raw) return 0; // no date => fallback
+  const ms = new Date(raw).getTime();
+  return Number.isNaN(ms) ? 0 : ms;
+}, []);
 
-  // Helper to parse time safely
-  const getTimeMs = (row) => {
-    // Row might have updated_at or time
-    const raw = row.updated_at || row.time;
-    if (!raw) return 0; // no date => fallback
-    const ms = new Date(raw).getTime();
-    return Number.isNaN(ms) ? 0 : ms;
-  };
-
-  // Sort so that 'bad' is first, then by descending time
-  const sortComments = (arr) => {
-    return arr.slice().sort((a, b) => {
-      // 1) 'bad' first
-      if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
-      if (b.sentiment_tag === "bad" && a.sentiment_tag !== "bad") return 1;
-      // 2) then by descending date/time
-      return getTimeMs(b) - getTimeMs(a);
-    });
-  };
+// -------------------------------------------------
+// Sort so that 'bad' is first, then by descending time.
+const sortComments = useCallback((arr) => {
+  return arr.slice().sort((a, b) => {
+    // 1) 'bad' first
+    if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
+    if (b.sentiment_tag === "bad" && a.sentiment_tag !== "bad") return 1;
+    // 2) then by descending date/time
+    return getTimeMs(b) - getTimeMs(a);
+  });
+}, [getTimeMs]);
 
   const fetchAllData = useCallback(async () => {
     setLoading(true);
