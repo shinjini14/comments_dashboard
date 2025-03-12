@@ -84,10 +84,10 @@ const Dashboard = () => {
     });
   };
 
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     setLoading(true);
     try {
-      // Standard + YouTube endpoints
+      // Fetch standard and YouTube endpoints for main, good, and bad comments.
       const [
         mainStd,
         mainYt,
@@ -106,27 +106,19 @@ const Dashboard = () => {
         axios.get(`${process.env.REACT_APP_API_URL}/api/videos`),
       ]);
 
-      // Merge main (REMAP "text" -> main_comment, "author" -> main_comment_user)
+      // Merge results and tag rows with a "source" property.
       const mainCombined = [
-        ...mainStd.data.map((row) => ({
-          ...row,
-          source: "default",
-        })),
+        ...mainStd.data.map((row) => ({ ...row, source: "default" })),
         ...mainYt.data.map((row) => ({
           ...row,
           source: "youtube",
-          video_id: row.video_db_id,     // from youtube_comments
-          main_comment: row.text,        // REMAP from "text"
-          main_comment_user: row.author, // REMAP from "author"
+          video_id: row.video_db_id, // Remap youtube row's video_db_id to video_id
+          main_comment: row.text,    // Remap from "text"
+          main_comment_user: row.author, // Remap from "author"
         })),
       ];
-
-      // Merge good
       const goodCombined = [
-        ...goodStd.data.map((row) => ({
-          ...row,
-          source: "default",
-        })),
+        ...goodStd.data.map((row) => ({ ...row, source: "default" })),
         ...goodYt.data.map((row) => ({
           ...row,
           source: "youtube",
@@ -135,13 +127,8 @@ const Dashboard = () => {
           main_comment_user: row.author,
         })),
       ];
-
-      // Merge bad
       const badCombined = [
-        ...badStd.data.map((row) => ({
-          ...row,
-          source: "default",
-        })),
+        ...badStd.data.map((row) => ({ ...row, source: "default" })),
         ...badYt.data.map((row) => ({
           ...row,
           source: "youtube",
@@ -151,7 +138,8 @@ const Dashboard = () => {
         })),
       ];
 
-      // Sort each array so that 'bad' is first, then by descending time
+      // Sort each array so that 'bad' is first, then by descending time.
+      // (Assuming you have a sortComments function as in your code.)
       const sortedMain = sortComments(mainCombined);
       const sortedGood = sortComments(goodCombined);
       const sortedBad = sortComments(badCombined);
@@ -162,7 +150,7 @@ const Dashboard = () => {
         bad: sortedBad,
       });
 
-      // Build video mapping: id => url
+      // Build video mapping: id => url.
       const mapping = {};
       videosRes.data.forEach((video) => {
         mapping[video.id] = video.url;
@@ -173,14 +161,11 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // No dependencies, so fetchAllData is memoized
 
-    // -------------------------------------------------
-  // 2. Fetch Standard & YouTube Comments
-  // -------------------------------------------------
   useEffect(() => {
     fetchAllData();
-  }, []);
+  }, [fetchAllData]);
 
   const currentComments = allComments[selectedDashboard] || [];
 
