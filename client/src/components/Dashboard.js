@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import {
   AppBar,
@@ -64,35 +64,33 @@ const Dashboard = () => {
 
 
 
-  // Helper to parse time safely
-  const getTimeMs = (row) => {
-    // Row might have updated_at or time
+  const getTimeMs = useCallback((row) => {
     const raw = row.updated_at || row.time;
-    if (!raw) return 0; // no date => fallback
+    if (!raw) return 0;
     const ms = new Date(raw).getTime();
     return Number.isNaN(ms) ? 0 : ms;
-  };
-
-  // Sort so that 'bad' is first, then by descending time
-  const sortComments = (arr) => {
-    return arr.slice().sort((a, b) => {
-      // 1) 'bad' first
-      if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
-      if (b.sentiment_tag === "bad" && a.sentiment_tag !== "bad") return 1;
-      // 2) then by descending date/time
-      return getTimeMs(b) - getTimeMs(a);
-    });
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-useEffect(() => {
-    fetchAllData();
   }, []);
 
+  // -------------------------------------------------
+  // Sort comments: 'bad' first, then descending by time.
+  // -------------------------------------------------
+  const sortComments = useCallback(
+    (arr) => {
+      return arr.slice().sort((a, b) => {
+        if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
+        if (b.sentiment_tag === "bad" && a.sentiment_tag !== "bad") return 1;
+        return getTimeMs(b) - getTimeMs(a);
+      });
+    },
+    [getTimeMs]
+  );
 
-  const fetchAllData = async () => {
+  // -------------------------------------------------
+  // Fetch Standard & YouTube Comments
+  // -------------------------------------------------
+  const fetchAllData = useCallback(async () => {
     setLoading(true);
     try {
-      // Standard + YouTube endpoints
       const [
         mainStd,
         mainYt,
@@ -111,27 +109,18 @@ useEffect(() => {
         axios.get(`${process.env.REACT_APP_API_URL}/api/videos`),
       ]);
 
-      // Merge main (REMAP "text" -> main_comment, "author" -> main_comment_user)
       const mainCombined = [
-        ...mainStd.data.map((row) => ({
-          ...row,
-          source: "default",
-        })),
+        ...mainStd.data.map((row) => ({ ...row, source: "default" })),
         ...mainYt.data.map((row) => ({
           ...row,
           source: "youtube",
-          video_id: row.video_db_id,     // from youtube_comments
-          main_comment: row.text,        // REMAP from "text"
-          main_comment_user: row.author, // REMAP from "author"
+          video_id: row.video_db_id, // remap from youtube_comments
+          main_comment: row.text,    // remap from "text"
+          main_comment_user: row.author, // remap from "author"
         })),
       ];
-
-      // Merge good
       const goodCombined = [
-        ...goodStd.data.map((row) => ({
-          ...row,
-          source: "default",
-        })),
+        ...goodStd.data.map((row) => ({ ...row, source: "default" })),
         ...goodYt.data.map((row) => ({
           ...row,
           source: "youtube",
@@ -140,13 +129,8 @@ useEffect(() => {
           main_comment_user: row.author,
         })),
       ];
-
-      // Merge bad
       const badCombined = [
-        ...badStd.data.map((row) => ({
-          ...row,
-          source: "default",
-        })),
+        ...badStd.data.map((row) => ({ ...row, source: "default" })),
         ...badYt.data.map((row) => ({
           ...row,
           source: "youtube",
@@ -156,7 +140,6 @@ useEffect(() => {
         })),
       ];
 
-      // Sort each array so that 'bad' is first, then by descending time
       const sortedMain = sortComments(mainCombined);
       const sortedGood = sortComments(goodCombined);
       const sortedBad = sortComments(badCombined);
@@ -167,7 +150,7 @@ useEffect(() => {
         bad: sortedBad,
       });
 
-      // Build video mapping: id => url
+      // Build video mapping
       const mapping = {};
       videosRes.data.forEach((video) => {
         mapping[video.id] = video.url;
@@ -178,11 +161,11 @@ useEffect(() => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [sortComments]);
 
-    // -------------------------------------------------
-  // 2. Fetch Standard & YouTube Comments
-  // -------------------------------------------------
+  useEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
  
   const currentComments = allComments[selectedDashboard] || [];
 
