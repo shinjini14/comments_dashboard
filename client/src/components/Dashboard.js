@@ -1,4 +1,4 @@
-import React, { useEffect, useState,useCallback  } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 import {
   AppBar,
@@ -63,31 +63,36 @@ const Dashboard = () => {
   const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null });
 
 
- // Helper to parse time safely
- const getTimeMs = useCallback((row) => {
-  // Row might have updated_at or time
-  const raw = row.updated_at || row.time;
-  if (!raw) return 0; // no date => fallback
-  const ms = new Date(raw).getTime();
-  return Number.isNaN(ms) ? 0 : ms;
-}, []);
 
-// -------------------------------------------------
-// Sort so that 'bad' is first, then by descending time.
-const sortComments = useCallback((arr) => {
-  return arr.slice().sort((a, b) => {
-    // 1) 'bad' first
-    if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
-    if (b.sentiment_tag === "bad" && a.sentiment_tag !== "bad") return 1;
-    // 2) then by descending date/time
-    return getTimeMs(b) - getTimeMs(a);
-  });
-}, [getTimeMs]);
+  // Helper to parse time safely
+  const getTimeMs = (row) => {
+    // Row might have updated_at or time
+    const raw = row.updated_at || row.time;
+    if (!raw) return 0; // no date => fallback
+    const ms = new Date(raw).getTime();
+    return Number.isNaN(ms) ? 0 : ms;
+  };
 
-  const fetchAllData = useCallback(async () => {
+  // Sort so that 'bad' is first, then by descending time
+  const sortComments = (arr) => {
+    return arr.slice().sort((a, b) => {
+      // 1) 'bad' first
+      if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
+      if (b.sentiment_tag === "bad" && a.sentiment_tag !== "bad") return 1;
+      // 2) then by descending date/time
+      return getTimeMs(b) - getTimeMs(a);
+    });
+  };
+
+  useEffect(() => {
+    fetchAllData();
+  }, []);
+
+
+  const fetchAllData = async () => {
     setLoading(true);
     try {
-      // Fetch standard and YouTube endpoints for main, good, and bad comments.
+      // Standard + YouTube endpoints
       const [
         mainStd,
         mainYt,
@@ -106,19 +111,27 @@ const sortComments = useCallback((arr) => {
         axios.get(`${process.env.REACT_APP_API_URL}/api/videos`),
       ]);
 
-      // Merge results and tag rows with a "source" property.
+      // Merge main (REMAP "text" -> main_comment, "author" -> main_comment_user)
       const mainCombined = [
-        ...mainStd.data.map((row) => ({ ...row, source: "default" })),
+        ...mainStd.data.map((row) => ({
+          ...row,
+          source: "default",
+        })),
         ...mainYt.data.map((row) => ({
           ...row,
           source: "youtube",
-          video_id: row.video_db_id, // Remap youtube row's video_db_id to video_id
-          main_comment: row.text,    // Remap from "text"
-          main_comment_user: row.author, // Remap from "author"
+          video_id: row.video_db_id,     // from youtube_comments
+          main_comment: row.text,        // REMAP from "text"
+          main_comment_user: row.author, // REMAP from "author"
         })),
       ];
+
+      // Merge good
       const goodCombined = [
-        ...goodStd.data.map((row) => ({ ...row, source: "default" })),
+        ...goodStd.data.map((row) => ({
+          ...row,
+          source: "default",
+        })),
         ...goodYt.data.map((row) => ({
           ...row,
           source: "youtube",
@@ -127,8 +140,13 @@ const sortComments = useCallback((arr) => {
           main_comment_user: row.author,
         })),
       ];
+
+      // Merge bad
       const badCombined = [
-        ...badStd.data.map((row) => ({ ...row, source: "default" })),
+        ...badStd.data.map((row) => ({
+          ...row,
+          source: "default",
+        })),
         ...badYt.data.map((row) => ({
           ...row,
           source: "youtube",
@@ -138,8 +156,7 @@ const sortComments = useCallback((arr) => {
         })),
       ];
 
-      // Sort each array so that 'bad' is first, then by descending time.
-      // (Assuming you have a sortComments function as in your code.)
+      // Sort each array so that 'bad' is first, then by descending time
       const sortedMain = sortComments(mainCombined);
       const sortedGood = sortComments(goodCombined);
       const sortedBad = sortComments(badCombined);
@@ -150,7 +167,7 @@ const sortComments = useCallback((arr) => {
         bad: sortedBad,
       });
 
-      // Build video mapping: id => url.
+      // Build video mapping: id => url
       const mapping = {};
       videosRes.data.forEach((video) => {
         mapping[video.id] = video.url;
@@ -161,12 +178,12 @@ const sortComments = useCallback((arr) => {
     } finally {
       setLoading(false);
     }
-  }, []); // No dependencies, so fetchAllData is memoized
+  };
 
-  useEffect(() => {
-    fetchAllData();
-  }, [fetchAllData]);
-
+    // -------------------------------------------------
+  // 2. Fetch Standard & YouTube Comments
+  // -------------------------------------------------
+ 
   const currentComments = allComments[selectedDashboard] || [];
 
   // Unique row ID
