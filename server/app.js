@@ -125,23 +125,9 @@ app.post("/approve/:id", async (req, res) => {
     try {
       const moveQuery = `
         WITH moved AS (
-          DELETE FROM comments_api
-          WHERE id = $1
-          RETURNING
-            id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-            main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-            reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
+          DELETE FROM comments_api WHERE id = $1 RETURNING *
         )
-        INSERT INTO good_comments (
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        )
-        SELECT
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        FROM moved;
+        INSERT INTO good_comments SELECT * FROM moved;
       `;
       await pool.query(moveQuery, [id]);
       res.json({ success: true, message: "Comment approved" });
@@ -157,23 +143,9 @@ app.post("/approve/:id", async (req, res) => {
     try {
       const moveQuery = `
         WITH moved AS (
-          DELETE FROM comments_api
-          WHERE id = $1
-          RETURNING
-            id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-            main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-            reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
+          DELETE FROM comments_api WHERE id = $1 RETURNING *
         )
-        INSERT INTO bad_comments (
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        )
-        SELECT
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        FROM moved;
+        INSERT INTO bad_comments SELECT * FROM moved;
       `;
       await pool.query(moveQuery, [id]);
       res.json({ success: true, message: "Comment rejected" });
@@ -183,56 +155,29 @@ app.post("/approve/:id", async (req, res) => {
     }
   });
   
-  // Move from good_comments or bad_comments -> comments_api
+  // Undo from good_comments or bad_comments -> comments_api
   app.post("/undo/:id", async (req, res) => {
     const { id } = req.params;
     try {
-      // Try from good_comments first
       let query = `
         WITH moved AS (
-          DELETE FROM good_comments
-          WHERE id = $1
-          RETURNING
-            id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-            main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-            reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
+          DELETE FROM good_comments WHERE id = $1 RETURNING *
         )
-        INSERT INTO comments_api (
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        )
-        SELECT
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        FROM moved;
+        INSERT INTO comments_api SELECT * FROM moved;
       `;
       let result = await pool.query(query, [id]);
+  
       if (result.rowCount === 0) {
-        // Then try from bad_comments
+        // Not in good_comments => try bad_comments
         query = `
           WITH moved AS (
-            DELETE FROM bad_comments
-            WHERE id = $1
-            RETURNING
-              id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-              main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-              reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
+            DELETE FROM bad_comments WHERE id = $1 RETURNING *
           )
-          INSERT INTO comments_api (
-            id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-            main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-            reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-          )
-          SELECT
-            id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-            main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-            reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-          FROM moved;
+          INSERT INTO comments_api SELECT * FROM moved;
         `;
         await pool.query(query, [id]);
       }
+  
       res.json({ success: true, message: "Comment restored to main dashboard" });
     } catch (error) {
       console.error("Error undoing comment:", error);
@@ -248,23 +193,9 @@ app.post("/approve/:id", async (req, res) => {
     try {
       const moveQuery = `
         WITH moved AS (
-          DELETE FROM comments_api
-          WHERE id = ANY($1)
-          RETURNING
-            id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-            main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-            reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
+          DELETE FROM comments_api WHERE id = ANY($1) RETURNING *
         )
-        INSERT INTO good_comments (
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        )
-        SELECT
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        FROM moved;
+        INSERT INTO good_comments SELECT * FROM moved;
       `;
       await pool.query(moveQuery, [ids]);
       res.json({ success: true, message: "Bulk approval successful" });
@@ -279,23 +210,9 @@ app.post("/approve/:id", async (req, res) => {
     try {
       const moveQuery = `
         WITH moved AS (
-          DELETE FROM comments_api
-          WHERE id = ANY($1)
-          RETURNING
-            id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-            main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-            reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
+          DELETE FROM comments_api WHERE id = ANY($1) RETURNING *
         )
-        INSERT INTO bad_comments (
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        )
-        SELECT
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        FROM moved;
+        INSERT INTO bad_comments SELECT * FROM moved;
       `;
       await pool.query(moveQuery, [ids]);
       res.json({ success: true, message: "Bulk rejection successful" });
@@ -308,51 +225,30 @@ app.post("/approve/:id", async (req, res) => {
   app.post("/bulk/undo", async (req, res) => {
     const { ids } = req.body;
     try {
-      // Move from good_comments -> comments_api
-      const resultGood = await pool.query(`
+      // Try removing from good_comments first
+      const resultGood = await pool.query(
+        `
         WITH moved AS (
-          DELETE FROM good_comments
-          WHERE id = ANY($1)
-          RETURNING
-            id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-            main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-            reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
+          DELETE FROM good_comments WHERE id = ANY($1) RETURNING *
         )
-        INSERT INTO comments_api (
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        )
-        SELECT
-          id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-          main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-          reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-        FROM moved;
-      `, [ids]);
+        INSERT INTO comments_api SELECT * FROM moved;
+        `,
+        [ids]
+      );
   
-      // If some IDs not found in good_comments, try bad_comments
+      // If some IDs weren't found in good_comments, they might be in bad_comments
       if (resultGood.rowCount < ids.length) {
-        await pool.query(`
+        await pool.query(
+          `
           WITH moved AS (
-            DELETE FROM bad_comments
-            WHERE id = ANY($1)
-            RETURNING
-              id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-              main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-              reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
+            DELETE FROM bad_comments WHERE id = ANY($1) RETURNING *
           )
-          INSERT INTO comments_api (
-            id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-            main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-            reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-          )
-          SELECT
-            id, video_id, sponsor_id, youtube_id, writer_id, updated_at,
-            main_comment, main_comment_user, main_comment_likes, reply_user, reply,
-            reply_likes, sentiment_tag, account_id, channel, time, votes, replies, platform
-          FROM moved;
-        `, [ids]);
+          INSERT INTO comments_api SELECT * FROM moved;
+          `,
+          [ids]
+        );
       }
+  
       res.json({ success: true, message: "Bulk undo successful" });
     } catch (error) {
       console.error("Error in bulk undo:", error);
@@ -361,11 +257,12 @@ app.post("/approve/:id", async (req, res) => {
   });
   
   // --------------------------------------------------
-  // 7) Bulk Delete
+  // 7) Bulk Delete (from main/good/bad)
   // --------------------------------------------------
   app.post("/comments/:type/bulk-delete", async (req, res) => {
     const { type } = req.params;
     const { ids } = req.body;
+  
     let table = "comments_api";
     if (type === "good") table = "good_comments";
     if (type === "bad") table = "bad_comments";
