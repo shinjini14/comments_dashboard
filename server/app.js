@@ -231,7 +231,7 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
         // - "text" becomes main_comment
         // - "author" becomes main_comment_user
         const { rows: comments } = await pool.query(
-          `SELECT text AS main_comment, author AS main_comment_user
+          `SELECT main_comment, author AS main_comment_user
            FROM comments_api
            WHERE video_id = $1`,
           [video_id]
