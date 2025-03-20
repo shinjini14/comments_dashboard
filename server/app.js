@@ -232,8 +232,8 @@ app.get("/api/comments/:video_id/details", async (req, res) => {
         // - "author" becomes main_comment_user
         const { rows: comments } = await pool.query(
           `SELECT text AS main_comment, author AS main_comment_user
-           FROM youtube_comments
-           WHERE video_db_id = $1`,
+           FROM comments_api
+           WHERE video_id = $1`,
           [video_id]
         );
         // Get the preview image from the YouTube-specific statistics table.
