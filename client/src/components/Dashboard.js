@@ -62,9 +62,11 @@ const Dashboard = () => {
   const [bulkDialog, setBulkDialog] = useState({ open: false, action: "" });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null });
 
-
-
+  // -------------------------------------------------
+  // 2. Helper: Parse time safely (returns time in ms)
+  // -------------------------------------------------
   const getTimeMs = useCallback((row) => {
+    // Use updated_at if available; otherwise, use time.
     const raw = row.updated_at || row.time;
     if (!raw) return 0;
     const ms = new Date(raw).getTime();
@@ -72,87 +74,41 @@ const Dashboard = () => {
   }, []);
 
   // -------------------------------------------------
-  // Sort comments: 'bad' first, then descending by time.
+  // 3. Helper: Sort comments (bad first, then descending by time)
   // -------------------------------------------------
-  const sortComments = useCallback(
-    (arr) => {
-      return arr.slice().sort((a, b) => {
-        if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
-        if (b.sentiment_tag === "bad" && a.sentiment_tag !== "bad") return 1;
-        return getTimeMs(b) - getTimeMs(a);
-      });
-    },
-    [getTimeMs]
-  );
+  const sortComments = useCallback((arr) => {
+    return arr.slice().sort((a, b) => {
+      if (a.sentiment_tag === "bad" && b.sentiment_tag !== "bad") return -1;
+      if (b.sentiment_tag === "bad" && a.sentiment_tag !== "bad") return 1;
+      return getTimeMs(b) - getTimeMs(a);
+    });
+  }, [getTimeMs]);
 
   // -------------------------------------------------
-  // Fetch Standard & YouTube Comments
+  // 4. Fetch Comments & Videos
   // -------------------------------------------------
   const fetchAllData = useCallback(async () => {
     setLoading(true);
     try {
-      const [
-        mainStd,
-        mainYt,
-        goodStd,
-        goodYt,
-        badStd,
-        badYt,
-        videosRes,
-      ] = await Promise.all([
+      const [mainRes, goodRes, badRes, videosRes] = await Promise.all([
         axios.get(`${process.env.REACT_APP_API_URL}/comments/main`),
-        axios.get(`${process.env.REACT_APP_API_URL}/comments/main?source=youtube`),
         axios.get(`${process.env.REACT_APP_API_URL}/comments/good`),
-        axios.get(`${process.env.REACT_APP_API_URL}/comments/good?source=youtube`),
         axios.get(`${process.env.REACT_APP_API_URL}/comments/bad`),
-        axios.get(`${process.env.REACT_APP_API_URL}/comments/bad?source=youtube`),
         axios.get(`${process.env.REACT_APP_API_URL}/api/videos`),
       ]);
 
-      const mainCombined = [
-        ...mainStd.data.map((row) => ({ ...row, source: "default" })),
-        ...mainYt.data.map((row) => ({
-          ...row,
-          source: "youtube",
-          video_id: row.video_db_id, // remap from youtube_comments
-          main_comment: row.text,    // remap from "text"
-          main_comment_user: row.author, // remap from "author"
-        })),
-      ];
-      const goodCombined = [
-        ...goodStd.data.map((row) => ({ ...row, source: "default" })),
-        ...goodYt.data.map((row) => ({
-          ...row,
-          source: "youtube",
-          video_id: row.video_db_id,
-          main_comment: row.text,
-          main_comment_user: row.author,
-        })),
-      ];
-      const badCombined = [
-        ...badStd.data.map((row) => ({ ...row, source: "default" })),
-        ...badYt.data.map((row) => ({
-          ...row,
-          source: "youtube",
-          video_id: row.video_db_id,
-          main_comment: row.text,
-          main_comment_user: row.author,
-        })),
-      ];
-
-      const sortedMain = sortComments(mainCombined);
-      const sortedGood = sortComments(goodCombined);
-      const sortedBad = sortComments(badCombined);
+      const main = mainRes.data || [];
+      const good = goodRes.data || [];
+      const bad = badRes.data || [];
 
       setAllComments({
-        main: sortedMain,
-        good: sortedGood,
-        bad: sortedBad,
+        main: sortComments(main),
+        good: sortComments(good),
+        bad: sortComments(bad),
       });
 
-      // Build video mapping
       const mapping = {};
-      videosRes.data.forEach((video) => {
+      (videosRes.data || []).forEach((video) => {
         mapping[video.id] = video.url;
       });
       setVideoMapping(mapping);
@@ -166,25 +122,23 @@ const Dashboard = () => {
   useEffect(() => {
     fetchAllData();
   }, [fetchAllData]);
- 
+
   const currentComments = allComments[selectedDashboard] || [];
 
-  // Unique row ID
-  const getRowId = (row) => row.id || row.comment_id || row.video_id;
+  // Unique row id from the table.
+  const getRowId = (row) => row.id;
 
   // -------------------------------------------------
-  // 3. Single Approve/Reject/Undo/Delete
+  // 5. Single Approve/Reject/Undo/Delete
   // -------------------------------------------------
-  const approveComment = async (id, source = "default") => {
+  const approveComment = async (id) => {
     try {
-      const queryParam = source === "youtube" ? "?source=youtube" : "";
-      await axios.post(`${process.env.REACT_APP_API_URL}/approve/${id}${queryParam}`);
-      // Move from main => good
-      const item = allComments.main.find((c) => getRowId(c) === id);
+      await axios.post(`${process.env.REACT_APP_API_URL}/approve/${id}`);
+      const item = allComments.main.find((c) => c.id === id);
       if (item) {
         setAllComments((prev) => ({
           ...prev,
-          main: prev.main.filter((c) => getRowId(c) !== id),
+          main: prev.main.filter((c) => c.id !== id),
           good: [item, ...prev.good],
         }));
       }
@@ -193,16 +147,14 @@ const Dashboard = () => {
     }
   };
 
-  const rejectComment = async (id, source = "default") => {
+  const rejectComment = async (id) => {
     try {
-      const queryParam = source === "youtube" ? "?source=youtube" : "";
-      await axios.post(`${process.env.REACT_APP_API_URL}/reject/${id}${queryParam}`);
-      // Move from main => bad
-      const item = allComments.main.find((c) => getRowId(c) === id);
+      await axios.post(`${process.env.REACT_APP_API_URL}/reject/${id}`);
+      const item = allComments.main.find((c) => c.id === id);
       if (item) {
         setAllComments((prev) => ({
           ...prev,
-          main: prev.main.filter((c) => getRowId(c) !== id),
+          main: prev.main.filter((c) => c.id !== id),
           bad: [item, ...prev.bad],
         }));
       }
@@ -211,25 +163,23 @@ const Dashboard = () => {
     }
   };
 
-  const undoComment = async (id, source = "default") => {
+  const undoComment = async (id) => {
     try {
-      const queryParam = source === "youtube" ? "?source=youtube" : "";
-      await axios.post(`${process.env.REACT_APP_API_URL}/undo/${id}${queryParam}`);
-      // Move from good/bad => main
-      const itemGood = allComments.good.find((c) => getRowId(c) === id);
+      await axios.post(`${process.env.REACT_APP_API_URL}/undo/${id}`);
+      const itemGood = allComments.good.find((c) => c.id === id);
       if (itemGood) {
         setAllComments((prev) => ({
           ...prev,
-          good: prev.good.filter((c) => getRowId(c) !== id),
+          good: prev.good.filter((c) => c.id !== id),
           main: [itemGood, ...prev.main],
         }));
         return;
       }
-      const itemBad = allComments.bad.find((c) => getRowId(c) === id);
+      const itemBad = allComments.bad.find((c) => c.id === id);
       if (itemBad) {
         setAllComments((prev) => ({
           ...prev,
-          bad: prev.bad.filter((c) => getRowId(c) !== id),
+          bad: prev.bad.filter((c) => c.id !== id),
           main: [itemBad, ...prev.main],
         }));
       }
@@ -241,17 +191,14 @@ const Dashboard = () => {
   const handleSingleDelete = (id) => {
     setDeleteDialog({ open: true, id });
   };
+
   const confirmSingleDelete = async () => {
     try {
       const { id } = deleteDialog;
-      await axios.delete(
-        `${process.env.REACT_APP_API_URL}/comments/${selectedDashboard}/${id}`
-      );
+      await axios.delete(`${process.env.REACT_APP_API_URL}/comments/${selectedDashboard}/${id}`);
       setAllComments((prev) => ({
         ...prev,
-        [selectedDashboard]: prev[selectedDashboard].filter(
-          (c) => getRowId(c) !== id
-        ),
+        [selectedDashboard]: prev[selectedDashboard].filter((c) => c.id !== id),
       }));
     } catch (error) {
       console.error("Error deleting comment:", error);
@@ -261,60 +208,41 @@ const Dashboard = () => {
   };
 
   // -------------------------------------------------
-  // 4. Bulk Actions
+  // 6. Bulk Actions
   // -------------------------------------------------
   const handleBulkAction = (action) => setBulkDialog({ open: true, action });
   const confirmBulkAction = async () => {
     try {
       if (bulkDialog.action === "approve") {
-        await axios.post(`${process.env.REACT_APP_API_URL}/bulk/approve`, {
-          ids: rowSelectionModel,
-        });
-        const approvedItems = allComments.main.filter((c) =>
-          rowSelectionModel.includes(getRowId(c))
-        );
+        await axios.post(`${process.env.REACT_APP_API_URL}/bulk/approve`, { ids: rowSelectionModel });
+        const approvedItems = allComments.main.filter((c) => rowSelectionModel.includes(c.id));
         setAllComments((prev) => ({
           ...prev,
-          main: prev.main.filter((c) => !rowSelectionModel.includes(getRowId(c))),
+          main: prev.main.filter((c) => !rowSelectionModel.includes(c.id)),
           good: [...approvedItems, ...prev.good],
         }));
       } else if (bulkDialog.action === "reject") {
-        await axios.post(`${process.env.REACT_APP_API_URL}/bulk/reject`, {
-          ids: rowSelectionModel,
-        });
-        const rejectedItems = allComments.main.filter((c) =>
-          rowSelectionModel.includes(getRowId(c))
-        );
+        await axios.post(`${process.env.REACT_APP_API_URL}/bulk/reject`, { ids: rowSelectionModel });
+        const rejectedItems = allComments.main.filter((c) => rowSelectionModel.includes(c.id));
         setAllComments((prev) => ({
           ...prev,
-          main: prev.main.filter((c) => !rowSelectionModel.includes(getRowId(c))),
+          main: prev.main.filter((c) => !rowSelectionModel.includes(c.id)),
           bad: [...rejectedItems, ...prev.bad],
         }));
       } else if (bulkDialog.action === "delete") {
-        await axios.post(
-          `${process.env.REACT_APP_API_URL}/comments/${selectedDashboard}/bulk-delete`,
-          { ids: rowSelectionModel }
-        );
+        await axios.post(`${process.env.REACT_APP_API_URL}/comments/${selectedDashboard}/bulk-delete`, { ids: rowSelectionModel });
         setAllComments((prev) => ({
           ...prev,
-          [selectedDashboard]: prev[selectedDashboard].filter(
-            (c) => !rowSelectionModel.includes(getRowId(c))
-          ),
+          [selectedDashboard]: prev[selectedDashboard].filter((c) => !rowSelectionModel.includes(c.id)),
         }));
       } else if (bulkDialog.action === "undo") {
-        await axios.post(`${process.env.REACT_APP_API_URL}/bulk/undo`, {
-          ids: rowSelectionModel,
-        });
-        const undoneGood = allComments.good.filter((c) =>
-          rowSelectionModel.includes(getRowId(c))
-        );
-        const undoneBad = allComments.bad.filter((c) =>
-          rowSelectionModel.includes(getRowId(c))
-        );
+        await axios.post(`${process.env.REACT_APP_API_URL}/bulk/undo`, { ids: rowSelectionModel });
+        const undoneGood = allComments.good.filter((c) => rowSelectionModel.includes(c.id));
+        const undoneBad = allComments.bad.filter((c) => rowSelectionModel.includes(c.id));
         setAllComments((prev) => ({
           ...prev,
-          good: prev.good.filter((c) => !rowSelectionModel.includes(getRowId(c))),
-          bad: prev.bad.filter((c) => !rowSelectionModel.includes(getRowId(c))),
+          good: prev.good.filter((c) => !rowSelectionModel.includes(c.id)),
+          bad: prev.bad.filter((c) => !rowSelectionModel.includes(c.id)),
           main: [...undoneGood, ...undoneBad, ...prev.main],
         }));
       }
@@ -327,18 +255,13 @@ const Dashboard = () => {
   };
 
   // -------------------------------------------------
-  // 5. Translation
+  // 7. Translation
   // -------------------------------------------------
   const translateComment = async (commentId, originalComment) => {
     try {
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/translate`, {
-        text: originalComment,
-      });
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/translate`, { text: originalComment });
       if (response.data.translatedText) {
-        setTranslationModal({
-          open: true,
-          translatedText: response.data.translatedText,
-        });
+        setTranslationModal({ open: true, translatedText: response.data.translatedText });
       } else {
         alert("Translation failed.");
       }
@@ -349,23 +272,19 @@ const Dashboard = () => {
   };
 
   // -------------------------------------------------
-  // 6. Comment Thread Modal
+  // 8. Comment Thread Modal
   // -------------------------------------------------
   const openModal = async (comment) => {
     if (!comment || !comment.video_id) return;
     try {
-      const queryParam = comment.source === "youtube" ? "?source=youtube" : "";
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/comments/${comment.video_id}/details${queryParam}`
-      );
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/comments/${comment.video_id}/details`);
       setModalData({
-        main_comment_user: comment.main_comment_user,
+        main_comment_user: comment.main_comment_user || comment.author,
         main_comment: comment.main_comment,
         preview: response.data.preview || null,
         video_id: comment.video_id,
         replies: response.data.replies || [],
         sentiment_tag: comment.sentiment_tag,
-        source: comment.source,
       });
       setIsModalOpen(true);
     } catch (error) {
@@ -379,7 +298,7 @@ const Dashboard = () => {
   };
 
   // -------------------------------------------------
-  // 7. DataGrid Columns
+  // 9. DataGrid Columns
   // -------------------------------------------------
   const columns = [
     {
@@ -389,48 +308,56 @@ const Dashboard = () => {
       renderCell: (params) => {
         const row = params.row;
         const url = videoMapping[row.video_id];
-        // YouTube icon if source = youtube
-        if (row.source === "youtube") {
+        if (!url) return null;
+        if (url.includes("youtube.com") || url.includes("youtu.be")) {
           return <YouTubeIcon sx={{ color: "#FF0000" }} />;
         }
-        // Otherwise, check standard
-        if (!url) return null;
         if (url.includes("instagram.com")) return <InstagramIcon sx={{ color: "#E1306C" }} />;
         if (url.includes("facebook.com")) return <FacebookIcon sx={{ color: "#1877F2" }} />;
         if (url.includes("twitter.com")) return <TwitterIcon sx={{ color: "#1DA1F2" }} />;
         return null;
       },
     },
-    { field: "main_comment_user", headerName: "Commenter", flex: 1 },
+    {
+      field: "main_comment_user",
+      headerName: "Commenter",
+      flex: 1,
+      renderCell: (params) => {
+        // If the row is from a YouTube video, show "author" (if available); else fallback to main_comment_user.
+        const row = params.row;
+        return <span>{row.author || row.main_comment_user}</span>;
+      },
+    },
     {
       field: "main_comment",
       headerName: "Message",
       flex: 2,
-      renderCell: (params) => (
-        <Typography
-          onClick={() => openModal(params.row)}
-          sx={{
-            whiteSpace: "normal",
-            wordBreak: "break-word",
-            cursor: "pointer",
-            color: "#000",
-            "&:hover": { textDecoration: "underline" },
-          }}
-        >
-          {params.row.main_comment}
-        </Typography>
-      ),
+      renderCell: (params) => {
+        // If the row is from a YouTube video, show "text" (if available); else fallback to main_comment.
+        const row = params.row;
+        return (
+          <Typography
+            onClick={() => openModal(row)}
+            sx={{
+              whiteSpace: "normal",
+              wordBreak: "break-word",
+              cursor: "pointer",
+              color: "#000",
+              "&:hover": { textDecoration: "underline" },
+            }}
+          >
+            {row.text || row.main_comment}
+          </Typography>
+        );
+      },
     },
     {
       field: "updated_at",
       headerName: "Time",
       width: 150,
       renderCell: (params) => {
-        // For YouTube rows, we might have updated_at from the joined stats table, or time from the row
-        const timeValue = params.row.updated_at || params.row.time;
-        if (!timeValue) return "N/A";
-        // Safely parse
-        const ms = new Date(timeValue).getTime();
+        if (!params.value) return "N/A";
+        const ms = new Date(params.value).getTime();
         if (Number.isNaN(ms)) return "N/A";
         return format(new Date(ms), "dd/MM/yyyy, HH:mm");
       },
@@ -448,10 +375,8 @@ const Dashboard = () => {
             padding: "2px 8px",
             borderRadius: "12px",
             backgroundColor:
-              params.row.sentiment_tag === "bad"
-                ? "rgba(211,47,47,0.15)"
-                : "rgba(56,142,60,0.15)",
-            color: params.row.sentiment_tag === "bad" ? "#D32F2F" : "#388E3C",
+              params.value === "bad" ? "rgba(211,47,47,0.15)" : "rgba(56,142,60,0.15)",
+            color: params.value === "bad" ? "#D32F2F" : "#388E3C",
             fontWeight: 500,
             fontSize: "12px",
             textTransform: "capitalize",
@@ -459,7 +384,7 @@ const Dashboard = () => {
             maxHeight: "20px",
           }}
         >
-          {params.row.sentiment_tag}
+          {params.value}
         </Box>
       ),
     },
@@ -469,53 +394,28 @@ const Dashboard = () => {
       flex: 1,
       renderCell: (params) => {
         const row = params.row;
-        const id = getRowId(row);
-        const source = row.source || "default";
+        const id = row.id;
         return (
           <Box sx={{ display: "flex", gap: "4px" }}>
             {selectedDashboard === "main" && (
               <>
-                <IconButton
-                  color="primary"
-                  size="small"
-                  title="Approve"
-                  onClick={() => approveComment(id, source)}
-                >
+                <IconButton color="primary" size="small" title="Approve" onClick={() => approveComment(id)}>
                   <ThumbUp fontSize="small" />
                 </IconButton>
-                <IconButton
-                  color="secondary"
-                  size="small"
-                  title="Reject"
-                  onClick={() => rejectComment(id, source)}
-                >
+                <IconButton color="secondary" size="small" title="Reject" onClick={() => rejectComment(id)}>
                   <ThumbDown fontSize="small" />
                 </IconButton>
               </>
             )}
             {(selectedDashboard === "good" || selectedDashboard === "bad") && (
-              <IconButton
-                color="info"
-                size="small"
-                title="Undo"
-                onClick={() => undoComment(id, source)}
-              >
+              <IconButton color="info" size="small" title="Undo" onClick={() => undoComment(id)}>
                 <UndoIcon fontSize="small" />
               </IconButton>
             )}
-            <IconButton
-              color="error"
-              size="small"
-              title="Delete"
-              onClick={() => handleSingleDelete(id)}
-            >
+            <IconButton color="error" size="small" title="Delete" onClick={() => handleSingleDelete(id)}>
               <DeleteOutline fontSize="small" />
             </IconButton>
-            <IconButton
-              size="small"
-              title="Translate"
-              onClick={() => translateComment(id, row.main_comment)}
-            >
+            <IconButton size="small" title="Translate" onClick={() => translateComment(id, row.text || row.main_comment)}>
               <GTranslateOutlined fontSize="small" />
             </IconButton>
           </Box>
@@ -525,7 +425,7 @@ const Dashboard = () => {
   ];
 
   // -------------------------------------------------
-  // 8. Rendering
+  // 10. Rendering
   // -------------------------------------------------
   if (loading) {
     return (
@@ -542,7 +442,6 @@ const Dashboard = () => {
     );
   }
 
-  // Filter by URL
   const filteredComments = currentComments.filter((comment) => {
     const url = videoMapping[comment.video_id];
     return url && url.toLowerCase().includes(searchQuery.toLowerCase());
@@ -556,14 +455,7 @@ const Dashboard = () => {
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Comments Dashboard
           </Typography>
-          <Button
-            variant="outlined"
-            color="inherit"
-            onClick={() => {
-              localStorage.clear();
-              window.location.href = "/";
-            }}
-          >
+          <Button variant="outlined" color="inherit" onClick={() => { localStorage.clear(); window.location.href = "/"; }}>
             Logout
           </Button>
         </Toolbar>
@@ -748,11 +640,7 @@ const Dashboard = () => {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button
-            onClick={() =>
-              setTranslationModal({ open: false, translatedText: "" })
-            }
-          >
+          <Button onClick={() => setTranslationModal({ open: false, translatedText: "" })}>
             Close
           </Button>
         </DialogActions>
@@ -845,10 +733,7 @@ const Dashboard = () => {
                   px: 2,
                   py: 1,
                   borderRadius: "12px",
-                  backgroundColor:
-                    modalData.sentiment_tag === "bad"
-                      ? "rgba(211,47,47,0.15)"
-                      : "rgba(56,142,60,0.15)",
+                  backgroundColor: modalData.sentiment_tag === "bad" ? "rgba(211,47,47,0.15)" : "rgba(56,142,60,0.15)",
                   color: modalData.sentiment_tag === "bad" ? "#D32F2F" : "#388E3C",
                 }}
               >
@@ -859,9 +744,7 @@ const Dashboard = () => {
               Replies:
             </Typography>
             <Box sx={{ pl: 1, maxHeight: "200px", overflowY: "auto" }}>
-              {modalData.replies.filter(
-                (reply) => reply.main_comment_id === modalData.video_id
-              ).length > 0 ? (
+              {modalData.replies.filter((reply) => reply.main_comment_id === modalData.video_id).length > 0 ? (
                 modalData.replies
                   .filter((reply) => reply.main_comment_id === modalData.video_id)
                   .map((reply, index) => (
@@ -909,9 +792,7 @@ const Dashboard = () => {
       <Dialog open={deleteDialog.open} onClose={() => setDeleteDialog({ open: false, id: null })}>
         <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>
-          <Typography>
-            Are you sure you want to <b>delete</b> this comment?
-          </Typography>
+          <Typography>Are you sure you want to <b>delete</b> this comment?</Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteDialog({ open: false, id: null })}>Cancel</Button>
